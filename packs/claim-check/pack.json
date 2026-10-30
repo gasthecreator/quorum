@@ -1,0 +1,17 @@
+{
+  "id": "claim-check",
+  "name": "Claim check",
+  "description": "Source-linked factual claims about astronomy, SI units, hydrology, and oceanography.",
+  "categories": ["astronomy", "si_units", "hydrology", "oceanography"],
+  "category_descriptions": {
+    "astronomy": "Solar-system structure and planetary facts.",
+    "si_units": "Official definitions of SI base units and constants.",
+    "hydrology": "Water distribution, groundwater, and the water cycle.",
+    "oceanography": "Seawater salinity, density, freezing, and sea ice."
+  },
+  "modes": ["claim"],
+  "corpus": {
+    "calibration": "calibration.jsonl",
+    "heldout": "heldout.jsonl"
+  }
+}

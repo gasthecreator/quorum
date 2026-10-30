@@ -5,8 +5,8 @@ import {
   MessageSquareText, Play, Radio, RefreshCw, ShieldAlert, ShieldCheck, Sparkles, Target,
   TriangleAlert, UsersRound, X,
 } from "lucide-react";
-import { addModel, downloadRunExport, getHealth, getModels, getPacks, getProfiles, loadFixtures, startFixtureRun, startLiveRun, subscribeToJob, subscribeToRun } from "./api";
-import type { ModelCreate, ModelInfo, PackInfo, ProfileCell, ProfilesResponse, RunRequest } from "./contracts";
+import { addModel, downloadRunExport, getHealth, getLatestEval, getModels, getPacks, getProfiles, loadFixtures, startEval, startFixtureRun, startLiveRun, subscribeToJob, subscribeToRun } from "./api";
+import type { EvalCondition, EvalInterval, EvalRequest, EvalResult, ModelCreate, ModelInfo, PackInfo, ProfileCell, ProfilesResponse, RunRequest } from "./contracts";
 import type { Cluster, EventEnvelope, Fixture, FinalResult, JudgeRuling, ModelMessage, RunStarted } from "./types";
 
 type RoundFinished = { round: number; agreement: number };
@@ -40,7 +40,7 @@ function App() {
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [exportError, setExportError] = useState("");
-  const [page, setPage] = useState<"review" | "profiles" | "models">("review");
+  const [page, setPage] = useState<"review" | "profiles" | "models" | "eval">("review");
   const closeStream = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -221,7 +221,7 @@ function App() {
         <nav className="primary-nav" aria-label="Main navigation">
           <button className={`nav-item ${page === "review" ? "active" : ""}`} onClick={() => setPage("review")}><MessageSquareText size={17} /><span>Review room</span><span className="nav-shortcut">⌘ 1</span></button>
           <button className={`nav-item ${page === "profiles" ? "active" : ""}`} onClick={() => setPage("profiles")}><Gauge size={17} /><span>Skill profiles</span></button>
-          <button className="nav-item disabled" title="Available after F6"><Activity size={17} /><span>Evaluations</span><span className="nav-lock">F6</span></button>
+          <button className={`nav-item ${page === "eval" ? "active" : ""}`} onClick={() => setPage("eval")}><Activity size={17} /><span>Evaluations</span></button>
         </nav>
 
         <div className="nav-label nav-label-spaced">TOOLS</div>
@@ -237,7 +237,7 @@ function App() {
 
       <main className="main-area">
         <header className="topbar">
-          <div className="breadcrumbs"><span>Workspace</span><ArrowRight size={13} /><strong>{page === "review" ? "Review room" : page === "profiles" ? "Skill profiles" : "Model manager"}</strong></div>
+          <div className="breadcrumbs"><span>Workspace</span><ArrowRight size={13} /><strong>{page === "review" ? "Review room" : page === "profiles" ? "Skill profiles" : page === "eval" ? "Evaluations" : "Model manager"}</strong></div>
           <div className="topbar-actions">
             <span className={`connection-pill ${apiMode === "live" && !healthOk ? "connection-offline" : ""}`}><span className="status-dot" />{apiMode === "mock" ? "Fixture mode" : backendLoading ? "Connecting to API" : healthOk ? "Live API connected" : "Live API unavailable"}</span>
             <span className="version-label">Contract 1.1.0</span>
@@ -401,6 +401,7 @@ function App() {
           </> : null}
           <div style={{ display: page === "models" ? "contents" : "none" }}><ModelManagerPage models={models} packs={packs} apiMode={apiMode} onModelsChanged={() => setReloadKey((key) => key + 1)} onViewProfiles={() => setPage("profiles")} /></div>
           <div style={{ display: page === "profiles" ? "contents" : "none" }}><ProfilesPage packs={packs} models={models} defaultPack={selectedPack} apiMode={apiMode} active={page === "profiles"} /></div>
+          <div style={{ display: page === "eval" ? "contents" : "none" }}><EvaluationPage packs={packs} models={availableModels} defaultPack={selectedPack} defaultModels={selectedModels} defaultJudge={judgeModelId} defaultRounds={maxRounds} apiMode={apiMode} active={page === "eval"} /></div>
         </div>
       </main>
     </div>
@@ -661,6 +662,110 @@ function ProfileTableCell({ cell, defaultWeight }: { cell?: ProfileCell; default
   if (!cell) return <td className="profile-cell profile-empty"><strong>{fmt(defaultWeight)}</strong><small>n 0 · default</small></td>;
   const hue = Math.round(cell.weight * 112);
   return <td className="profile-cell" style={{ backgroundColor: `hsl(${hue} 34% 95%)` }} title={`Weight ${fmt(cell.weight)} · observed rate ${fmt(cell.rate)} · Wilson 95% lower bound ${fmt(cell.lower)} · ${cell.correct}/${cell.n} correct`}><strong>{fmt(cell.weight)}</strong><small>n {cell.n} · rate {fmt(cell.rate)}</small><small>95% LB {fmt(cell.lower)}</small></td>;
+}
+
+function EvaluationPage({ packs, models, defaultPack, defaultModels, defaultJudge, defaultRounds, apiMode, active }: { packs: PackInfo[]; models: ModelInfo[]; defaultPack: string; defaultModels: string[]; defaultJudge: string; defaultRounds: number; apiMode: "mock" | "live"; active: boolean }) {
+  const [packId, setPackId] = useState(defaultPack);
+  const [modelIds, setModelIds] = useState(defaultModels);
+  const [judgeId, setJudgeId] = useState(defaultJudge);
+  const [maxRounds, setMaxRounds] = useState(defaultRounds);
+  const [limit, setLimit] = useState("");
+  const [result, setResult] = useState<EvalResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [job, setJob] = useState<{ id: string; done: number; total: number; message: string; status: "running" | "done" | "error" } | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const stopJob = useRef<(() => void) | null>(null);
+  const pack = packs.find((item) => item.id === packId);
+  const selectedHosted = models.filter((model) => modelIds.includes(model.id) && model.locality === "hosted");
+  useEffect(() => () => stopJob.current?.(), []);
+  useEffect(() => { if (defaultPack && !packs.some((item) => item.id === packId)) setPackId(defaultPack); }, [defaultPack, packId, packs]);
+  useEffect(() => { setModelIds(defaultModels); }, [defaultModels]);
+  useEffect(() => { setJudgeId(defaultJudge); }, [defaultJudge]);
+  useEffect(() => {
+    let current = true;
+    if (!active || apiMode !== "live" || !packId) return () => { current = false; };
+    setLoading(true); setError("");
+    void getLatestEval(packId).then((data) => { if (current) setResult(data); }).catch((caught: unknown) => {
+      if (!current) return;
+      const message = caught instanceof Error ? caught.message : "Unable to load the latest evaluation.";
+      if (/no evaluation|no_eval/i.test(message)) setResult(null); else setError(message);
+    }).finally(() => { if (current) setLoading(false); });
+    return () => { current = false; };
+  }, [active, apiMode, packId, refreshKey]);
+
+  function toggleModel(id: string) {
+    setModelIds((current) => current.includes(id) ? current.filter((modelId) => modelId !== id) : current.length < 6 ? [...current, id] : current);
+  }
+  async function startEvaluation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (apiMode !== "live" || busy || !packId || modelIds.length === 0) return;
+    setBusy(true); setError(""); setJob(null);
+    try {
+      const payload: EvalRequest = { pack: packId, model_ids: modelIds, judge_model_id: judgeId || null, max_rounds: maxRounds, ...(limit ? { limit: Number(limit) } : {}) };
+      const jobId = await startEval(payload);
+      setJob({ id: jobId, done: 0, total: 0, message: "Evaluation queued", status: "running" });
+      stopJob.current?.();
+      stopJob.current = subscribeToJob(jobId, (event) => {
+        const data = asRecord(event.data);
+        if (event.event === "job_progress") setJob((current) => current ? { ...current, done: Number(data.done ?? 0), total: Number(data.total ?? 0), message: String(data.message ?? "Running evaluation…") } : current);
+        if (event.event === "job_done") {
+          setJob((current) => current ? { ...current, status: "done", message: "Evaluation finished." } : current);
+          setBusy(false); setRefreshKey((key) => key + 1);
+        }
+        if (event.event === "job_error") {
+          const detail = String(data.message ?? "Evaluation failed.");
+          setJob((current) => current ? { ...current, status: "error", message: detail } : current);
+          setError(detail); setBusy(false);
+        }
+      }, (caught) => { setError(caught.message); setBusy(false); });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to start the evaluation.");
+      setBusy(false);
+    }
+  }
+
+  return <>
+    <section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-line" />HELD-OUT EVALUATION</div><h1>Evaluations</h1><p>Compare six review conditions on the pack’s held-out examples. Starting a run makes inference calls.</p></div><label className="profile-pack-select"><span>Pack</span><select value={packId} onChange={(event) => setPackId(event.target.value)} disabled={!packs.length}>{packs.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.corpus_counts?.heldout ?? "?"} held-out</option>)}</select></label></section>
+    {apiMode !== "live" && <div className="event-note event-warning">Evaluation requires live mode and a configured model provider. Start the backend and launch Vite with <code>VITE_API=live</code>.</div>}
+    {error && <div className="error-banner page-error"><TriangleAlert size={16} /><span><strong>Evaluation needs attention</strong><small>{error}</small></span></div>}
+    <section className="panel eval-config-panel"><div className="panel-heading"><div className="panel-title"><span className="panel-icon purple"><Activity size={15} /></span><span><strong>Evaluation setup</strong><small>Pick the panel used across the baseline conditions</small></span></div><span className="selection-count">{modelIds.length} / 6 selected</span></div>
+      <form className="eval-config" onSubmit={(event) => { void startEvaluation(event); }}>
+        <div className="eval-model-grid">{models.map((model) => <label className={`model-option ${modelIds.includes(model.id) ? "selected" : ""}`} key={model.id}><input type="checkbox" checked={modelIds.includes(model.id)} disabled={!modelIds.includes(model.id) && modelIds.length >= 6} onChange={() => toggleModel(model.id)} /><span className="model-check">{modelIds.includes(model.id) && <Check size={11} />}</span><span className="model-option-copy"><strong>{model.tag || model.id}</strong><small>{model.family} · {model.license || "license unknown"}</small></span><span className="locality-tag">{model.locality}</span></label>)}{models.length === 0 && <div className="model-empty">No available open-weight models. Register and calibrate a model in Model Manager first.</div>}</div>
+        <div className="eval-options"><label className="setup-field"><span>Judge <small>optional</small></span><select value={judgeId} onChange={(event) => setJudgeId(event.target.value)}><option value="">Use backend default</option>{models.map((model) => <option key={model.id} value={model.id}>{model.tag || model.id}</option>)}</select></label><label className="setup-field"><span>Debate rounds</span><select value={maxRounds} onChange={(event) => setMaxRounds(Number(event.target.value))}><option value={0}>Blind only</option><option value={1}>1 round</option><option value={2}>2 rounds</option><option value={3}>3 rounds</option></select></label><label className="setup-field"><span>Held-out item limit <small>blank uses all</small></span><input type="number" min={1} max={pack?.corpus_counts?.heldout} value={limit} onChange={(event) => setLimit(event.target.value)} placeholder={String(pack?.corpus_counts?.heldout ?? "All items")} /></label></div>
+        {selectedHosted.length > 0 && <div className="hosted-note"><ShieldAlert size={14} /><span>Hosted models selected: evaluation inputs will be sent to {selectedHosted.map((model) => model.tag || model.id).join(", ")} through their configured providers.</span></div>}
+        <button className="primary-button manager-submit" type="submit" disabled={apiMode !== "live" || busy || modelIds.length === 0 || !packId}>{busy ? <LoaderCircle className="spin" size={14} /> : <Play size={13} fill="currentColor" />}{busy ? "Evaluation running…" : "Run held-out evaluation"}</button>
+      </form>
+    </section>
+    {job && <section className="panel job-panel eval-job"><div className="job-panel-header"><strong>Evaluation · {job.id}</strong><span className={`job-status ${job.status}`}>{job.status}</span></div><p>{job.message}</p>{job.status === "running" && <><div className="job-progress-track"><i style={{ width: `${job.total ? Math.min(100, job.done / job.total * 100) : 5}%` }} /></div><small>{job.total ? `${job.done} / ${job.total} steps` : "Waiting for evaluation work"}</small></>}</section>}
+    <section className="panel eval-results-panel"><div className="panel-heading"><div className="panel-title"><span className="panel-icon green"><BadgeCheck size={15} /></span><span><strong>Latest results</strong><small>{result ? `${result.n_items} held-out items · ${new Date(result.created_at).toLocaleString()}` : "No evaluation result loaded"}</small></span></div><button className="icon-button" aria-label="Reload latest evaluation" title="Reload latest evaluation" onClick={() => setRefreshKey((key) => key + 1)}><RefreshCw size={14} /></button></div>
+      {loading ? <div className="model-empty"><LoaderCircle className="spin" size={15} />Loading results…</div> : !result ? <div className="model-empty">No evaluation has been recorded for this pack. Configure a panel and run an evaluation above.</div> : <div className="eval-results-content"><div className="eval-result-meta"><span><strong>{result.n_positive}</strong> positive</span><span><strong>{result.n_negative}</strong> negative</span><span><strong>{result.model_ids.length}</strong> models</span><span>Judge: {models.find((model) => model.id === result.judge_model_id)?.tag ?? result.judge_model_id}</span></div><EvaluationChart conditions={result.conditions} /><div className="eval-table-wrap"><table className="eval-table"><thead><tr><th>Condition</th><th>Items</th><th>TP / FP / TN / FN</th><th>Precision</th><th>Recall</th><th>F1</th><th>False-positive rate</th><th>Accuracy</th></tr></thead><tbody>{result.conditions.map((condition) => <EvaluationRow key={condition.id} condition={condition} />)}</tbody></table></div>
+        <div className="movement-panel"><strong>Debate movement</strong><span>Toward correct: {result.debate_movement.toward_correct}</span><span>Toward wrong: {result.debate_movement.toward_wrong}</span><span>Neutral: {result.debate_movement.neutral}</span>{result.debate_movement.note && <small>{result.debate_movement.note}</small>}</div>
+        {result.notes.length > 0 && <div className="eval-notes"><strong>Run notes</strong>{result.notes.map((note, index) => <p key={index}>{note}</p>)}</div>}
+      </div>}
+    </section>
+    <div className="profile-explainer"><ShieldAlert size={14} /><span>These results describe this pack and selected models only. Small synthetic corpora produce wide, unstable intervals; do not treat them as production security evidence.</span></div>
+  </>;
+}
+
+function EvaluationRow({ condition }: { condition: EvalCondition }) {
+  return <tr className={!condition.available ? "condition-unavailable" : ""}><th><strong>{condition.id}. {condition.name}</strong>{!condition.available && <small>{condition.reason_unavailable}</small>}</th><td>{condition.available ? condition.n_items : "—"}</td><td>{condition.available ? `${condition.tp} / ${condition.fp} / ${condition.tn} / ${condition.fn}` : "—"}</td><EvalMetric interval={condition.precision} /><EvalMetric interval={condition.recall} /><EvalMetric interval={condition.f1} /><EvalMetric interval={condition.fpr} /><EvalMetric interval={condition.accuracy} /></tr>;
+}
+
+function EvaluationChart({ conditions }: { conditions: EvalCondition[] }) {
+  return <section className="condition-chart" aria-label="F1 comparison chart"><div className="section-title">F1 by condition <small>with 95% intervals</small></div>{conditions.map((condition) => {
+    const interval = condition.f1;
+    const value = interval?.value ?? 0;
+    const lo = interval?.lo ?? 0;
+    const hi = interval?.hi ?? 0;
+    return <div className="condition-chart-row" key={condition.id}><span className="condition-chart-label">{condition.id}. {condition.name}</span>{condition.available && interval ? <div className="condition-chart-track" role="img" aria-label={`${condition.name}: F1 ${fmt(value)}, 95 percent interval ${fmt(lo)} to ${fmt(hi)}`}><i className="condition-chart-fill" style={{ width: `${value * 100}%` }} /><b className="condition-chart-interval" style={{ left: `${lo * 100}%`, width: `${Math.max(hi - lo, 0.004) * 100}%` }} /><em className="condition-chart-point" style={{ left: `${value * 100}%` }} /></div> : <div className="condition-chart-unavailable">{condition.reason_unavailable || "Unavailable"}</div>}<strong className="condition-chart-value">{condition.available && interval ? fmt(value) : "—"}</strong></div>;
+  })}<div className="condition-chart-axis"><span>0%</span><span>50%</span><span>100%</span></div></section>;
+}
+
+function EvalMetric({ interval }: { interval?: EvalInterval | null }) {
+  if (!interval) return <td className="eval-metric-empty">—</td>;
+  return <td className="eval-metric"><strong>{fmt(interval.value)}</strong><small>95% [{fmt(interval.lo)}, {fmt(interval.hi)}]</small></td>;
 }
 
 export default App;

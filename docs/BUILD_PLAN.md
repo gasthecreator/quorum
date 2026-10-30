@@ -137,9 +137,12 @@ Build against the mock server first, then switch to live.
 The merged review-room work implements F0–F3 against contract v1.1.0: Vite fixture replay, live
 pack/model loading, pasted or uploaded input, panel/round configuration, streamed review and ruling,
 framing, escalation, critique, locality and exports. The current `frontend/model-manager-profiles`
-branch adds F4/F5: profiles from `GET /profiles` and model registration with streamed calibration
-progress. P1 adds a deterministic mutation generator and separate calibration/held-out corpora with
-clean controls. Evaluation, the claim-check pack, and demo materials remain pending.
+branch adds F4/F5/F6: profiles from `GET /profiles`, model registration with streamed calibration
+progress, and held-out comparisons from `GET /eval/latest` with evaluation jobs from `POST /eval`.
+P1 adds a deterministic mutation generator and separate calibration/held-out corpora with clean
+controls. P2 adds 40 source-linked claims, split evenly across calibration and held-out data and
+balanced by label and category. P3 now has install/model attribution notes and a runnable `DEMO.md`
+runbook. The runbook has not been rehearsed with real inference, and no demo recording exists yet.
 
 The local clone includes the merged v1.1 backend and contract. This branch does not change
 `backend/` or `contracts/`. A real inference run still depends on a configured and reachable model
@@ -150,6 +153,19 @@ calibration, and the same in held-out except SQL injection has a second positive
 useful for pipeline development, but far too small for stable skill estimates or comparative
 performance claims. Keep sample counts and synthetic-data limits visible; expand and human-review the
 corpus before publishing model rankings.
+
+P2 has 20 calibration and 20 held-out claims across astronomy, SI units, hydrology and oceanography.
+Each split has 10 true and 10 false items, with five items per category; labels include a source URL.
+This is still too small for stable comparative estimates. The deterministic generator checks split
+sizes, label balance, category balance, duplicate text and overlap, but those structural checks do not
+independently validate factual correctness. The source-linked labels were manually checked against the
+official pages named in `packs/claim-check/README.md`.
+
+The README proposes three small Ollama tags as demo candidates, not as a validated lineup. The
+repository plan assumes an Apple M2 with 8 GB, but this checkout has no Ollama CLI or downloaded model
+weights. Resolved model digests, Ollama version, real calibration/review/evaluation results, a live
+demo rehearsal and a recording remain outstanding. Do not publish model rankings or describe the demo
+as validated until those steps are completed.
 
 ## Integration checkpoints
 

@@ -1,5 +1,5 @@
 import type { EventEnvelope, Fixture } from "./types";
-import type { Health, ModelCreate, ModelCreated, ModelInfo, PackInfo, ProfilesResponse, RunCreated, RunRequest } from "./contracts";
+import type { EvalRequest, EvalResult, Health, JobCreated, ModelCreate, ModelCreated, ModelInfo, PackInfo, ProfilesResponse, RunCreated, RunRequest } from "./contracts";
 
 const mockRoot = "/__mock";
 const liveRoot = "http://127.0.0.1:8787";
@@ -39,6 +39,16 @@ export async function addModel(payload: ModelCreate): Promise<ModelCreated> {
 export async function getProfiles(pack?: string): Promise<ProfilesResponse> {
   const query = pack ? `?pack=${encodeURIComponent(pack)}` : "";
   return request<ProfilesResponse>(liveRoot, `/profiles${query}`);
+}
+
+export async function getLatestEval(pack?: string): Promise<EvalResult> {
+  const query = pack ? `?pack=${encodeURIComponent(pack)}` : "";
+  return request<EvalResult>(liveRoot, `/eval/latest${query}`);
+}
+
+export async function startEval(payload: EvalRequest): Promise<string> {
+  const result = await request<JobCreated>(liveRoot, "/eval", { method: "POST", body: JSON.stringify(payload) });
+  return result.job_id;
 }
 
 export function subscribeToJob(jobId: string, onEvent: (event: EventEnvelope) => void, onError: (error: Error) => void): () => void {
