@@ -1,4 +1,4 @@
-// Typed HTTP surface mirrored from contracts/openapi.json (contract v1.1.0).
+// Typed HTTP surface mirrored from contracts/openapi.json (contract v1.3.0).
 // Keep these wire types aligned with the frozen OpenAPI document.
 export type RunRequest = {
   pack: string;
@@ -8,8 +8,18 @@ export type RunRequest = {
   judge_model_id?: string | null;
   category?: string | null;
   seed?: number | null;
+  roles?: "off" | "profile";
+  outsider?: boolean;
+  ground?: boolean;
   frame?: boolean | null;
   escalate?: "auto" | "always";
+};
+
+export type RoleName = "attacker" | "maintainer" | "operator" | "outsider";
+export type RoleAssignment = {
+  role: RoleName;
+  source: "measured" | "default" | "chosen";
+  detail: string;
 };
 
 export type RunCreated = { run_id: string };
@@ -34,6 +44,7 @@ export type PackInfo = {
   description?: string;
   categories: string[];
   category_descriptions?: Record<string, string>;
+  category_roles?: Record<string, "attacker" | "maintainer" | "operator">;
   modes: Array<"review" | "claim">;
   corpus: Partial<Record<"calibration" | "heldout", string>>;
   corpus_counts?: Record<string, number>;
@@ -62,7 +73,7 @@ export type JobProgress = { job_id: string; done: number; total: number; message
 export type JobDone = { job_id: string; result: Record<string, unknown> };
 export type JobError = { job_id: string; code: string; message: string };
 export type JobCreated = { job_id: string };
-export type EvalRequest = { pack: string; model_ids: string[]; judge_model_id?: string | null; max_rounds?: number; limit?: number | null };
+export type EvalRequest = { pack: string; model_ids: string[]; judge_model_id?: string | null; max_rounds?: number; limit?: number | null; roles?: boolean };
 export type EvalInterval = { value: number; lo: number; hi: number };
 export type EvalCondition = {
   id: number; name: string; available: boolean; reason_unavailable: string; n_items: number;
@@ -84,6 +95,7 @@ export type Health = {
   contract_version: string;
   ollama: { reachable: boolean; version?: string | null; error?: string | null };
   models: number;
+  grounding?: Record<string, boolean>;
   fake_models_enabled?: boolean;
 };
 
