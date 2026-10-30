@@ -18,6 +18,7 @@ def settings(tmp_path):
     s.pack_dirs = (DEV_PACKS,)
     s.models_yaml = tmp_path / "none.yaml"
     s.enable_fake = True
+    s.ollama_url = "http://127.0.0.1:9"  # never talk to a real Ollama on the dev machine
     s.call_retries = 0
     s.call_timeout_s = 5
     return s

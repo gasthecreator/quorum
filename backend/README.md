@@ -33,7 +33,7 @@ quorum mcp                      # stdio MCP server; also installed as `quorum-mc
 ```
 
 Register it with an MCP-capable agent, for example `claude mcp add quorum -- quorum mcp`. Tools:
-`second_opinion(code, pack?, models?, judge?, rounds?, escalate?, ground?)` returns the verdict,
+`second_opinion(code, pack?, models?, judge?, rounds?, escalate?, ground?, roles?, outsider?)` returns the verdict,
 confirmed and disputed findings with line numbers of the text passed in, a suggested fix when a
 panelist gave one, who dissented, whether the judge overrode the vote, and the cost;
 `list_models`, `list_packs`, and `get_report(run_id)` for the full transcript. It runs in-process
@@ -121,7 +121,9 @@ Design decisions worth knowing:
 
 ## Not done yet
 
-- **Real-model validation.** The adapters are tested against an HTTP stand-in (`tests/fake_ollama.py`)
-  and with mocked responses; prompt quality and end-to-end behavior with a real multi-model panel
-  still need validation. First real run will likely need prompt tuning for small models.
-- The candidate model lineup and judge remain unvalidated on the target hardware (assumed 8 GB M2).
+- **Real-model validation is thin.** The adapters are tested against an HTTP stand-in
+  (`tests/fake_ollama.py`) and mocked responses, and have been run for real with qwen2.5:3b,
+  llama3.2:3b and gemma3:4b through Ollama on an 8 GB M2. That first run exposed three bugs (now
+  fixed) and showed near-chance calibration on the 9-item dev split; the prompts and any real held-out
+  numbers still need work on the real packs. The model lineup and judge remain unvalidated.
+- **B10** is Semgrep-only; running the code's tests is not built, and the rules cover the four dev-pack bug types.

@@ -74,6 +74,8 @@ SAFETY = (
 REVIEW_SYSTEM = """You are one member of a panel of independent code reviewers.
 Find real defects in the code under review: only those you can point to by line number.
 Clean code is common; report no findings when there is nothing wrong. Do not invent problems.
+Only report a defect if you can name the exact line and say how it fails. Code that already guards
+against a problem is not a defect.
 {safety}
 Line numbers refer to the numbered lines shown in the input.
 Allowed finding categories: {categories}.
@@ -104,13 +106,11 @@ JUDGE_SYSTEM = """You are the judge of a panel of {kind}. You rule on each clust
 The tally shows which anonymous panelists backed each cluster and the weight each vote carried.
 Default to the weighted vote. Override it only when you can state a concrete reason from the input
 itself, and put that reason in that cluster's "reason". An override without a reason is ignored.
-A cluster with "tool_verified": true was confirmed by a static-analysis tool: accept it.
+If a cluster has "tool_verified": true it was confirmed by a static-analysis tool: accept it.
 {safety}
 Reply with ONE JSON object and nothing else:
-{{"rulings": [{{"cluster_id": str, "accept": bool, "reason": str}}], "reason": str,
- "recommendation": str}}
-Include every cluster_id from the tally exactly once. "recommendation" is one direct sentence telling
-the author what to do."""
+{{"rulings": [{{"cluster_id": str, "accept": bool, "reason": str}}], "reason": str}}
+Include every cluster_id from the tally exactly once."""
 
 
 def system_prompt(pack: Pack, mode: str, role: str | None = None) -> str:

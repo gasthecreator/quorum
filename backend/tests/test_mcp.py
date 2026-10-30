@@ -100,3 +100,12 @@ async def test_list_packs(settings):
     async with open_session(settings) as session:
         packs = data(await session.call_tool("list_packs", {}))
         assert {p["id"] for p in packs} == {"code-review-dev", "claim-check-dev"}
+
+
+async def test_roles_and_outsider_are_passed_through(settings):
+    async with open_session(settings) as session:
+        r = data(await session.call_tool("second_opinion", {
+            "code": UNBOUNDED, "models": ["fake:sharp", "fake:sloppy", "fake:stubborn"],
+            "pack": "code-review-dev", "escalate": "always", "roles": True, "outsider": True}))
+        started = session.state.store.events(r["run_id"])[0]["data"]
+        assert {a["role"] for a in started["roles"].values()} >= {"outsider"}

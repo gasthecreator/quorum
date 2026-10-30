@@ -84,6 +84,8 @@ def build_server(state: AppState | None = None) -> FastMCP:
         rounds: int = 1,
         escalate: Literal["auto", "always"] = "auto",
         ground: bool = False,
+        roles: bool = False,
+        outsider: bool = False,
     ) -> dict:
         """Review a unified diff or a code snippet with a panel of local models.
 
@@ -92,6 +94,8 @@ def build_server(state: AppState | None = None) -> FastMCP:
         rounds: visible debate rounds after the blind one (0 to 3).
         escalate: 'auto' asks two models first and only convenes the full panel if they disagree
         or are unsure; 'always' runs the full debate.
+        roles: give each model the angle (attacker/maintainer/operator) it measured best at.
+        outsider: with 3+ models, the weakest specialist reviews the bare code cold, once.
         Returns the verdict, confirmed and disputed findings with line numbers (of the text you
         passed), a suggested fix when a panelist gave one, who dissented, and what it cost.
         """
@@ -117,7 +121,8 @@ def build_server(state: AppState | None = None) -> FastMCP:
             judge_id = hit[0]["id"]
         run_id = uuid.uuid4().hex[:10]
         req = RunRequest(pack=pick_pack(pack), input=code, model_ids=ids, judge_model_id=judge_id,
-                         max_rounds=max(0, min(rounds, 3)), escalate=escalate, ground=ground)
+                         max_rounds=max(0, min(rounds, 3)), escalate=escalate, ground=ground,
+                         roles="profile" if roles else "off", outsider=outsider)
         st.store.create_run(run_id, req.model_dump(), now())
         events: list[dict] = []
 

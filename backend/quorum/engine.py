@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel
 
 from . import prompts
-from .cluster import build_tally, finding_match
+from .cluster import build_tally, finding_match, group_findings, spans_overlap
 from .config import Settings
 from .grounding import Grounder, default_grounder, timed_check
 from .packs import PackStore
@@ -125,6 +125,27 @@ class DebateResult:
     ctx: Ctx | None = None
 
 
+_COMMENT = ("#", "//", "--", "/*", "*")
+
+
+def _only_comments(source: str, start: int, end: int) -> bool:
+    """True if every line in [start, end] of the pasted text is blank or a pure comment.
+
+    A defect has to be in code. Text in a comment (including a note aimed at the reviewers) is not one.
+    A diff line carries a leading +, - or space marker, which is ignored.
+    """
+    lines = source.split("\n")
+    if start < 1 or end < start or start > len(lines):
+        return False  # unlocatable findings are judged elsewhere, not silently dropped
+    for raw in lines[start - 1:end]:
+        t = raw.lstrip()
+        if t[:1] in "+-" and not t.startswith(("--", "++")):
+            t = t[1:].lstrip()
+        if t and not t.startswith(_COMMENT):
+            return False
+    return True
+
+
 class DebateError(Exception):
     def __init__(self, code: str, message: str):
         super().__init__(message)
@@ -177,14 +198,21 @@ class Debate:
 
     # ------------------------------------------------------------------ sanitising
 
-    def sanitize(self, mode: str, alias: str, rnd: int, out: DebaterOutput) -> State:
+    def sanitize(self, mode: str, alias: str, rnd: int, out: DebaterOutput,
+                 source: str | None = None) -> State:
         v = out.position.verdict
         allowed = {"issue", "no_issue", "unsure"} if mode == "review" else {"true", "false", "unsure"}
         findings: list[Finding] = []
         if mode == "review":
-            for i, f in enumerate(out.findings, 1):
-                if f.claim.strip():
-                    findings.append(Finding(**f.model_dump(), id=f"{alias}{rnd}-{i}"))
+            for f in out.findings:
+                if not f.claim.strip() or (source and _only_comments(source, f.line_start, f.line_end)):
+                    continue  # no claim, or it points at a comment rather than code
+                # small models repeat themselves: one defect, one finding
+                if any(g.category == f.category and spans_overlap(
+                        (g.line_start, g.line_end), (f.line_start, f.line_end),
+                        self.settings.line_tolerance) for g in findings):
+                    continue
+                findings.append(Finding(**f.model_dump(), id=f"{alias}{rnd}-{len(findings) + 1}"))
             if findings and v != "unsure":
                 v = "issue"  # a model that lists defects is voting that there is an issue
             elif v == "issue" and not findings:
@@ -216,9 +244,9 @@ class Debate:
                 if ctx.mode == "claim" or (not a.findings and not b.findings):
                     scores.append(1.0 if a.out.position.verdict == b.out.position.verdict else 0.0)
                     continue
-                inter = sum(1 for x in a.findings if any(finding_match(x, y, tol) for y in b.findings))
-                union = len(a.findings) + len(b.findings) - inter
-                scores.append(inter / union if union else 1.0)
+                # cluster the two answers together: agreement is the share of clusters both raised
+                groups = group_findings({"a": a.findings, "b": b.findings}, tol)
+                scores.append(sum(len(g.members) == 2 for g in groups) / len(groups) if groups else 1.0)
         return sum(scores) / len(scores)
 
     def _history_summary(self, ctx: Ctx, rounds: list[dict[str, State]], upto: int) -> str:
@@ -241,7 +269,7 @@ class Debate:
         msgs = prompts.blind_messages(pack, mode, text, nonce or prompts.new_nonce())
         res = await self.runner.call(self.registry.provider(model_id), msgs, DebaterOutput,
                                      prompts.debater_schema())
-        state = self.sanitize(mode, "X", 0, res.output) if res.output else None
+        state = self.sanitize(mode, "X", 0, res.output, text) if res.output else None
         return state, res
 
     # ------------------------------------------------------------------ rounds
@@ -293,7 +321,7 @@ class Debate:
                     completion_tokens=res.completion_tokens))
                 continue
             errors.pop(m, None)
-            new = self.sanitize(ctx.mode, alias, rnd, res.output)
+            new = self.sanitize(ctx.mode, alias, rnd, res.output, ctx.text)
             changed, reason = False, ""
             if rnd > 0:
                 prev = states[m]
@@ -500,7 +528,7 @@ class Debate:
             "id": c.id, "kind": c.kind, "verdict": c.verdict, "category": c.category,
             "lines": [c.line_start, c.line_end] if c.kind == "finding" else None,
             "claim": c.claim, "evidence": c.evidence[:300], "vote_accept": c.vote_accept,
-            "tool_verified": c.tool_verified,
+            **({"tool_verified": c.tool_verified} if ctx.ground else {}),
             "weighted_score": round(c.weighted_score, 3), "support_share": round(c.support_share, 3),
             "supporters": [{"alias": s.alias, "confidence": s.confidence, "weight": round(s.weight, 3)}
                            for s in c.supporters],
