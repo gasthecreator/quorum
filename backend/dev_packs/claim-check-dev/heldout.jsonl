@@ -1,0 +1,6 @@
+{"id": "c-held-1", "category": "geography", "input": "Lake Victoria borders Kenya, Uganda and Tanzania.", "label": {"truth": true, "source_url": "https://en.wikipedia.org/wiki/Lake_Victoria"}}
+{"id": "c-held-2", "category": "geography", "input": "The capital of Australia is Sydney.", "label": {"truth": false, "source_url": "https://en.wikipedia.org/wiki/Canberra"}}
+{"id": "c-held-3", "category": "science", "input": "Helium is the lightest element.", "label": {"truth": false, "source_url": "https://en.wikipedia.org/wiki/Hydrogen"}}
+{"id": "c-held-4", "category": "science", "input": "DNA is a double helix.", "label": {"truth": true, "source_url": "https://en.wikipedia.org/wiki/DNA"}}
+{"id": "c-held-5", "category": "history", "input": "The Apollo 11 landing took place in 1969.", "label": {"truth": true, "source_url": "https://en.wikipedia.org/wiki/Apollo_11"}}
+{"id": "c-held-6", "category": "history", "input": "World War I began in 1916.", "label": {"truth": false, "source_url": "https://en.wikipedia.org/wiki/World_War_I"}}

@@ -1,0 +1,24 @@
+{
+  "id": "code-review-dev",
+  "name": "Code review (dev seed)",
+  "description": "Hand-made fallback corpus for backend development. Replaced by the real code-review pack.",
+  "categories": [
+    "sql_injection",
+    "off_by_one",
+    "missing_await",
+    "unbounded_query"
+  ],
+  "category_descriptions": {
+    "sql_injection": "User input concatenated or interpolated into SQL.",
+    "off_by_one": "Loop bound, slice or index is off by one.",
+    "missing_await": "A coroutine is called without await.",
+    "unbounded_query": "A query that can return an unbounded number of rows."
+  },
+  "modes": [
+    "review"
+  ],
+  "corpus": {
+    "calibration": "calibration.jsonl",
+    "heldout": "heldout.jsonl"
+  }
+}

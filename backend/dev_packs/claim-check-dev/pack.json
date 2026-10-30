@@ -1,0 +1,17 @@
+{
+  "id": "claim-check-dev",
+  "name": "Claim check (dev seed)",
+  "description": "Twelve well-known claims with source links, for backend development.",
+  "categories": [
+    "geography",
+    "science",
+    "history"
+  ],
+  "modes": [
+    "claim"
+  ],
+  "corpus": {
+    "calibration": "calibration.jsonl",
+    "heldout": "heldout.jsonl"
+  }
+}
