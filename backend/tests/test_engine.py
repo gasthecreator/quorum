@@ -191,3 +191,27 @@ def test_agreement_stays_within_zero_and_one_when_findings_overlap_across_catego
     assert 0.0 <= ag <= 1.0
     assert debate.agreement(ctx, {"fake:sharp": a, "fake:sloppy": a}) == 1.0
     assert debate.agreement(ctx, {"fake:sharp": st((3, "x")), "fake:sloppy": st((30, "x"))}) == 0.0
+
+
+async def test_line_numbers_past_the_end_of_the_input_are_clamped_or_dropped(debate, registry):
+    """Seen live: gemma3:4b cited lines 7-17 for a 10-line diff, which widened the cluster."""
+    import json
+
+    m = ids(registry)
+    p = registry.provider(m["sharp"])
+    orig = p.chat
+
+    async def sloppy_lines(messages, **kw):
+        c = await orig(messages, **kw)
+        d = json.loads(c.text)
+        if d.get("findings"):
+            d["findings"][0]["line_end"] = 99
+            d["findings"].append({**d["findings"][0], "line_start": 50, "line_end": 60, "claim": "ghost"})
+        c.text = json.dumps(d)
+        return c
+
+    p.chat = sloppy_lines
+    res, events, _ = await run(debate, registry, ["sharp", "stubborn"], text=BUG)
+    sharp = next(d for e, d in events if e == "model_message" and d.model_id == m["sharp"])
+    n = len(BUG.rstrip("\n").split("\n"))
+    assert [(f.line_start, f.line_end) for f in sharp.findings] == [(2, n)]

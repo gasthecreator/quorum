@@ -204,9 +204,15 @@ class Debate:
         allowed = {"issue", "no_issue", "unsure"} if mode == "review" else {"true", "false", "unsure"}
         findings: list[Finding] = []
         if mode == "review":
+            n_lines = len(source.rstrip("\n").split("\n")) if source else None
             for f in out.findings:
                 if not f.claim.strip() or (source and _only_comments(source, f.line_start, f.line_end)):
                     continue  # no claim, or it points at a comment rather than code
+                if n_lines is not None:
+                    if f.line_start > n_lines:
+                        continue  # points past the end of the input: nothing there to be wrong
+                    if f.line_end > n_lines:  # seen with gemma3:4b: lines 7-17 in a 10-line diff
+                        f = f.model_copy(update={"line_end": n_lines})
                 # small models repeat themselves: one defect, one finding
                 if any(g.category == f.category and spans_overlap(
                         (g.line_start, g.line_end), (f.line_start, f.line_end),

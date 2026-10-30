@@ -54,18 +54,33 @@ def sse_frame(env: dict) -> str:
 
 
 async def sse_body(log: EventLog, after: int = 0, heartbeat_s: float = 15.0) -> AsyncIterator[str]:
-    """Frames for a StreamingResponse. Clients must close after a terminal event."""
+    """Frames for a StreamingResponse. Clients must close after a terminal event.
+
+    The pending read is never cancelled to send a heartbeat: cancelling an async generator's
+    __anext__ ends the generator, which would silently close the stream after the first quiet
+    stretch (a 3B model can think for longer than the heartbeat interval).
+    """
     yield "retry: 60000\n\n"
     it = log.follow(after).__aiter__()
-    while True:
-        try:
-            env = await asyncio.wait_for(it.__anext__(), timeout=heartbeat_s)
-        except StopAsyncIteration:
-            return
-        except TimeoutError:
-            yield ": ping\n\n"
-            continue
-        yield sse_frame(env)
+    pending: asyncio.Future | None = None
+    try:
+        while True:
+            if pending is None:
+                pending = asyncio.ensure_future(it.__anext__())
+            done, _ = await asyncio.wait({pending}, timeout=heartbeat_s)
+            if not done:
+                yield ": ping\n\n"
+                continue
+            try:
+                env = pending.result()
+            except StopAsyncIteration:
+                return
+            finally:
+                pending = None if pending.done() else pending
+            yield sse_frame(env)
+    finally:
+        if pending is not None and not pending.done():
+            pending.cancel()
 
 
 class Streams:
