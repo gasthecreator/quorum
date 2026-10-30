@@ -215,3 +215,40 @@ async def test_line_numbers_past_the_end_of_the_input_are_clamped_or_dropped(deb
     sharp = next(d for e, d in events if e == "model_message" and d.model_id == m["sharp"])
     n = len(BUG.rstrip("\n").split("\n"))
     assert [(f.line_start, f.line_end) for f in sharp.findings] == [(2, n)]
+
+
+def test_clustering_separates_categories_on_the_same_lines():
+    """Seen with qwen2.5:3b: a stray missing_await on line 9 merged into the SQL-injection cluster."""
+    from quorum.cluster import group_findings
+    from quorum.schemas import Finding
+
+    def f(i, ln, cat):
+        return Finding(id=i, category=cat, line_start=ln, line_end=ln, claim="c")
+
+    per = {"a": [f("a1", 7, "sql_injection")], "b": [f("b1", 8, "sql_injection"), f("b2", 9, "missing_await")]}
+    assert len(group_findings(per, 2, by_category=False)) == 1
+    groups = group_findings(per, 2, by_category=True)
+    assert sorted(len(g.members) for g in groups) == [1, 2]
+    assert {g.category for g in groups} == {"sql_injection", "missing_await"}
+
+
+async def test_a_stray_finding_of_another_category_lowers_agreement(debate, registry):
+    import json
+
+    m = ids(registry)
+    p = registry.provider(m["stubborn"])
+    orig = p.chat
+
+    async def stray(messages, **kw):
+        c = await orig(messages, **kw)
+        d = json.loads(c.text)
+        if d.get("findings"):
+            d["findings"].append({**d["findings"][0], "category": "missing_await", "line_start": 3,
+                                  "line_end": 3, "claim": "not awaited"})
+        c.text = json.dumps(d)
+        return c
+
+    p.chat = stray
+    _, events, _ = await run(debate, registry, ["sharp", "stubborn"], text=BUG, max_rounds=0)
+    first = next(d for e, d in events if e == "round_finished")
+    assert first.agreement < 1.0

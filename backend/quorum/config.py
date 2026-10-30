@@ -33,6 +33,7 @@ class Settings:
     default_weight: float = 0.5
     vote_threshold: float = 0.5
     line_tolerance: int = 2
+    cluster_by_category: bool = True
     run_token_budget: int = 60_000
     run_time_budget_s: float = 900.0
     min_change_reason_chars: int = 12
@@ -54,6 +55,7 @@ class Settings:
         if v := os.environ.get("OLLAMA_HOST") or os.environ.get("QUORUM_OLLAMA_URL"):
             s.ollama_url = v if v.startswith("http") else f"http://{v}"
         s.enable_fake = _env_bool("QUORUM_ENABLE_FAKE", s.enable_fake)
+        s.cluster_by_category = _env_bool("QUORUM_CLUSTER_BY_CATEGORY", s.cluster_by_category)
         s.parallelism = int(os.environ.get("QUORUM_PARALLELISM", s.parallelism))
         s.run_token_budget = int(os.environ.get("QUORUM_TOKEN_BUDGET", s.run_token_budget))
         s.run_time_budget_s = float(os.environ.get("QUORUM_TIME_BUDGET_S", s.run_time_budget_s))

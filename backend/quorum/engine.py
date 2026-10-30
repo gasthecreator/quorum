@@ -251,7 +251,8 @@ class Debate:
                     scores.append(1.0 if a.out.position.verdict == b.out.position.verdict else 0.0)
                     continue
                 # cluster the two answers together: agreement is the share of clusters both raised
-                groups = group_findings({"a": a.findings, "b": b.findings}, tol)
+                groups = group_findings({"a": a.findings, "b": b.findings}, tol,
+                                        self.settings.cluster_by_category)
                 scores.append(sum(len(g.members) == 2 for g in groups) / len(groups) if groups else 1.0)
         return sum(scores) / len(scores)
 
@@ -510,7 +511,7 @@ class Debate:
             findings={m: s.findings for m, s in states.items()}, aliases=ctx.aliases,
             weights=ctx.weights, category_hint=ctx.category,
             threshold=self.settings.vote_threshold, tol=self.settings.line_tolerance,
-            tool_findings=tools)
+            tool_findings=tools, by_category=self.settings.cluster_by_category)
         ruling = (self._skipped_ruling(ctx, tally) if skip_judge
                   else await self._judge(ctx, tally))
         return tally, ruling, self._finalize(ctx, tally, ruling, states)

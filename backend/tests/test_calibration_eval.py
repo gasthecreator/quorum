@@ -84,3 +84,20 @@ async def test_eval_rejects_contaminated_heldout(debate, registry, tmp_path, set
 def test_dev_packs_are_valid(packs):
     for p in packs.list():
         assert packs.validate(p.id) == [], p.id
+
+
+async def test_eval_writes_a_per_item_record_next_to_the_csv(debate, registry):
+    import json
+
+    m = ids(registry)
+    models = [m["sharp"], m["sloppy"], m["stubborn"]]
+    debate.grounder = None
+    await calibrate_many(debate, models, ["code-review-dev"])
+    res = await run_eval(debate, EvalRequest(pack="code-review-dev", model_ids=models,
+                                             judge_model_id=m["sharp"], limit=3))
+    path = debate.settings.home / "eval" / f"{res.id}.items.json"
+    rec = json.loads(path.read_text())
+    assert len(rec["items"]) == 3 and rec["pack"] == "code-review-dev"
+    row = rec["items"][0]
+    assert set(row["blind"]) == set(models) and set(row["outcomes"]) >= {"1", "2", "3", "4", "5"}
+    assert row["label"]["has_issue"] in (True, False) and "findings" in row["blind"][models[0]]
