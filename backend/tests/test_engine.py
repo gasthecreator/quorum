@@ -252,3 +252,22 @@ async def test_a_stray_finding_of_another_category_lowers_agreement(debate, regi
     _, events, _ = await run(debate, registry, ["sharp", "stubborn"], text=BUG, max_rounds=0)
     first = next(d for e, d in events if e == "round_finished")
     assert first.agreement < 1.0
+
+
+async def test_adding_a_finding_of_another_category_on_the_same_lines_needs_a_reason(debate, registry):
+    """Seen live (llama3.2:3b): round 1 added unbounded_query on lines next to its sql_injection and
+    nothing was flagged as a change, so the evidence requirement never applied."""
+    from quorum.engine import State
+    from quorum.schemas import DebaterOutput, Finding, Position
+
+    def st(*items):
+        fs = [Finding(id=f"x{i}", category=c, line_start=a, line_end=b, claim="c")
+              for i, (a, b, c) in enumerate(items)]
+        return State(DebaterOutput(position=Position(verdict="issue", confidence=0.9)), fs)
+
+    before = st((8, 9, "sql_injection"))
+    after = st((8, 9, "sql_injection"), (9, 9, "unbounded_query"))
+    assert debate._differs(before, after) and debate._differs(after, before)
+    assert not debate._differs(before, st((7, 9, "sql_injection")))  # a slightly different range is not a change
+    debate.settings.cluster_by_category = False
+    assert not debate._differs(before, after)  # the old behaviour, behind the switch
