@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
-  Activity, ArrowDown, ArrowRight, BadgeCheck, Braces, Check, ChevronDown, CircleHelp,
+  Activity, ArrowDown, ArrowRight, BadgeCheck, Check, ChevronDown, CircleHelp,
   CircleStop, Clock3, Download, FileCode2, FileUp, Gauge, GitBranch, Layers3, LoaderCircle,
   MessageSquareText, Play, Radio, RefreshCw, ShieldAlert, ShieldCheck, Sparkles, Target,
   TriangleAlert, UsersRound, X,
@@ -239,7 +239,6 @@ function App() {
         <div className="nav-label nav-label-spaced">TOOLS</div>
         <nav className="primary-nav" aria-label="Tools">
           <button className={`nav-item ${page === "models" ? "active" : ""}`} onClick={() => setPage("models")}><UsersRound size={17} /><span>Model manager</span></button>
-          <button className="nav-item disabled" title="Available after F8"><Braces size={17} /><span>Exports</span><span className="nav-lock">F8</span></button>
         </nav>
 
         <div className="sidebar-spacer" />
