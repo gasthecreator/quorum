@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
-  Activity, ArrowDown, ArrowRight, BadgeCheck, Braces, Check, ChevronDown, CircleHelp,
+  Activity, ArrowDown, ArrowRight, BadgeCheck, Check, ChevronDown, CircleHelp,
   CircleStop, Clock3, Download, FileCode2, FileUp, Gauge, GitBranch, Layers3, LoaderCircle,
   MessageSquareText, Play, Radio, RefreshCw, ShieldAlert, ShieldCheck, Sparkles, Target,
   TriangleAlert, UsersRound, X,
 } from "lucide-react";
-import { downloadRunExport, getHealth, getModels, getPacks, loadFixtures, startFixtureRun, startLiveRun, subscribeToRun } from "./api";
-import type { ModelInfo, PackInfo, RunRequest } from "./contracts";
-import type { Cluster, EventEnvelope, Fixture, FinalResult, JudgeRuling, ModelMessage, RunStarted } from "./types";
+import { addModel, downloadRunExport, getHealth, getLatestEval, getModels, getPacks, getProfiles, loadFixtures, startEval, startFixtureRun, startLiveRun, subscribeToJob, subscribeToRun } from "./api";
+import type { EvalCondition, EvalInterval, EvalRequest, EvalResult, ModelCreate, ModelInfo, PackInfo, ProfileCell, ProfilesResponse, RunRequest } from "./contracts";
+import type { Cluster, EventEnvelope, Fixture, FinalResult, Grounded, JudgeRuling, ModelMessage, RunStarted } from "./types";
 
 type RoundFinished = { round: number; agreement: number };
 type Stopped = { reason: "consensus" | "stalemate" | "max_rounds" | "budget"; round?: number };
@@ -34,12 +34,18 @@ function App() {
   const [maxRounds, setMaxRounds] = useState(2);
   const [escalate, setEscalate] = useState<"always" | "auto">("always");
   const [frameEnabled, setFrameEnabled] = useState(true);
+  const [roleMode, setRoleMode] = useState<"off" | "profile">("off");
+  const [outsiderEnabled, setOutsiderEnabled] = useState(false);
+  const [groundEnabled, setGroundEnabled] = useState(false);
+  const [groundingAvailable, setGroundingAvailable] = useState(false);
+  const [contractVersion, setContractVersion] = useState("1.3.0");
   const [fileName, setFileName] = useState("");
   const [events, setEvents] = useState<EventEnvelope[]>([]);
   const [runState, setRunState] = useState<"idle" | "loading" | "running" | "done" | "error">("idle");
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [exportError, setExportError] = useState("");
+  const [page, setPage] = useState<"review" | "profiles" | "models" | "eval">("review");
   const closeStream = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -68,6 +74,8 @@ function App() {
         const [health, packItems, modelItems] = await Promise.all([getHealth(), getPacks(), getModels()]);
         if (!active) return;
         setHealthOk(health.ok);
+        setGroundingAvailable(Boolean(health.grounding?.semgrep));
+        setContractVersion(health.contract_version);
         setPacks(packItems);
         setModels(modelItems);
         const nextPack = packItems.find((item) => item.id === selectedPack) ?? packItems[0];
@@ -93,6 +101,7 @@ function App() {
 
   const fixture = fixtures.find((item) => item.file === selectedFile) ?? fixtures[0];
   const selectedPackInfo = packs.find((item) => item.id === selectedPack);
+  const reviewPack = selectedPackInfo?.modes.includes("review") ?? false;
   const availableModels = models.filter((item) => item.open_weight && ["ready", "registered"].includes(item.status));
   const selectedHostedModels = models.filter((item) => selectedModels.includes(item.id) && item.locality === "hosted");
   const started = events.find((event) => event.event === "run_started")?.data as RunStarted | undefined;
@@ -102,6 +111,7 @@ function App() {
   const framed = events.find((event) => event.event === "framed")?.data as { restatement?: string; error?: string | null } | undefined;
   const escalation = events.find((event) => event.event === "escalated")?.data as { reason?: string; detail?: string } | undefined;
   const earlyFinish = events.find((event) => event.event === "finished_early")?.data as { calls_saved?: number; reason?: string } | undefined;
+  const grounded = events.find((event) => event.event === "grounded")?.data as Grounded | undefined;
   const rounds = useMemo(() => {
     const byRound = new Map<number, { messages: ModelMessage[]; agreement?: number; finished: boolean }>();
     for (const event of events) {
@@ -148,6 +158,9 @@ function App() {
             category: selectedCategory || null,
             escalate,
             frame: frameEnabled,
+            roles: reviewPack ? roleMode : "off",
+            outsider: reviewPack && outsiderEnabled && selectedModels.length >= 3,
+            ground: reviewPack && groundEnabled && groundingAvailable,
           } satisfies RunRequest);
       setRunState("running");
       closeStream.current = subscribeToRun(
@@ -176,11 +189,11 @@ function App() {
   const liveCanRun = Boolean(healthOk && selectedPack && inputText.trim() && inputText.length <= 60000 && selectedModels.length > 0 && !backendLoading);
 
   function toggleModel(modelId: string) {
-    setSelectedModels((current) => {
-      if (current.includes(modelId)) return current.filter((id) => id !== modelId);
-      if (current.length >= 6) return current;
-      return [...current, modelId];
-    });
+    const next = selectedModels.includes(modelId)
+      ? selectedModels.filter((id) => id !== modelId)
+      : selectedModels.length < 6 ? [...selectedModels, modelId] : selectedModels;
+    setSelectedModels(next);
+    if (next.length < 3) setOutsiderEnabled(false);
   }
 
   async function loadInputFile(file?: File) {
@@ -218,15 +231,14 @@ function App() {
 
         <div className="nav-label">WORKSPACE</div>
         <nav className="primary-nav" aria-label="Main navigation">
-          <button className="nav-item active"><MessageSquareText size={17} /><span>Review room</span><span className="nav-shortcut">⌘ 1</span></button>
-          <button className="nav-item disabled" title="Available after F4"><Gauge size={17} /><span>Skill profiles</span><span className="nav-lock">F4</span></button>
-          <button className="nav-item disabled" title="Available after F6"><Activity size={17} /><span>Evaluations</span><span className="nav-lock">F6</span></button>
+          <button className={`nav-item ${page === "review" ? "active" : ""}`} onClick={() => setPage("review")}><MessageSquareText size={17} /><span>Review room</span><span className="nav-shortcut">⌘ 1</span></button>
+          <button className={`nav-item ${page === "profiles" ? "active" : ""}`} onClick={() => setPage("profiles")}><Gauge size={17} /><span>Skill profiles</span></button>
+          <button className={`nav-item ${page === "eval" ? "active" : ""}`} onClick={() => setPage("eval")}><Activity size={17} /><span>Evaluations</span></button>
         </nav>
 
         <div className="nav-label nav-label-spaced">TOOLS</div>
         <nav className="primary-nav" aria-label="Tools">
-          <button className="nav-item disabled" title="Available after F5"><UsersRound size={17} /><span>Model manager</span><span className="nav-lock">F5</span></button>
-          <button className="nav-item disabled" title="Available after F8"><Braces size={17} /><span>Exports</span><span className="nav-lock">F8</span></button>
+          <button className={`nav-item ${page === "models" ? "active" : ""}`} onClick={() => setPage("models")}><UsersRound size={17} /><span>Model manager</span></button>
         </nav>
 
         <div className="sidebar-spacer" />
@@ -236,16 +248,17 @@ function App() {
 
       <main className="main-area">
         <header className="topbar">
-          <div className="breadcrumbs"><span>Workspace</span><ArrowRight size={13} /><strong>Review room</strong></div>
+          <div className="breadcrumbs"><span>Workspace</span><ArrowRight size={13} /><strong>{page === "review" ? "Review room" : page === "profiles" ? "Skill profiles" : page === "eval" ? "Evaluations" : "Model manager"}</strong></div>
           <div className="topbar-actions">
             <span className={`connection-pill ${apiMode === "live" && !healthOk ? "connection-offline" : ""}`}><span className="status-dot" />{apiMode === "mock" ? "Fixture mode" : backendLoading ? "Connecting to API" : healthOk ? "Live API connected" : "Live API unavailable"}</span>
-            <span className="version-label">Contract 1.1.0</span>
+            <span className="version-label">Contract {contractVersion}</span>
             {apiMode === "live" && <button className="icon-button" aria-label="Reconnect to API" title="Reload models and packs" onClick={() => setReloadKey((key) => key + 1)}><RefreshCw size={15} /></button>}
             <button className="icon-button" aria-label="Help"><CircleHelp size={17} /></button>
           </div>
         </header>
 
         <div className="page-content">
+          {page === "review" ? <>
           <section className="page-heading">
             <div>
               <div className="eyebrow"><span className="eyebrow-line" />LOCAL REVIEW COUNCIL</div>
@@ -293,6 +306,10 @@ function App() {
             maxRounds={maxRounds}
             escalate={escalate}
             frameEnabled={frameEnabled}
+            roleMode={roleMode}
+            outsiderEnabled={outsiderEnabled}
+            groundEnabled={groundEnabled}
+            groundingAvailable={groundingAvailable}
             loading={backendLoading}
             onPackChange={(id) => { setSelectedPack(id); setSelectedCategory(""); }}
             onCategoryChange={setSelectedCategory}
@@ -301,6 +318,9 @@ function App() {
             onRoundsChange={setMaxRounds}
             onEscalateChange={(value) => { setEscalate(value); setFrameEnabled(value === "always"); }}
             onFrameChange={setFrameEnabled}
+            onRoleModeChange={setRoleMode}
+            onOutsiderChange={setOutsiderEnabled}
+            onGroundChange={setGroundEnabled}
           />}
 
           {error && <div className="error-banner page-error"><TriangleAlert size={17} /><span><strong>{apiMode === "live" && !healthOk ? "Local API unavailable" : "Review setup needs attention"}</strong><small>{error}</small></span><button className="icon-button" aria-label="Dismiss error" onClick={() => setError("")}><X size={15} /></button></div>}
@@ -330,6 +350,7 @@ function App() {
               {framed?.restatement && <div className="event-note"><strong>Neutral framing</strong><p>{framed.restatement}</p></div>}
               {framed?.error && <div className="event-note event-warning">Framing failed; reviewers received the original input. {framed.error}</div>}
               {escalation && <div className="event-note"><strong>Panel escalated · {escalation.reason?.replaceAll("_", " ")}</strong><p>{escalation.detail}</p></div>}
+              {grounded && <div className={`event-note ${!grounded.available || grounded.error ? "event-warning" : ""}`}><strong>{grounded.tool} grounding · {grounded.available && !grounded.error ? `${grounded.findings.length} finding(s) in ${grounded.duration_ms} ms` : "unavailable"}</strong><p>{grounded.error || (!grounded.available ? "The backend could not run the configured static analyzer." : grounded.findings.length ? grounded.findings.map((finding) => `L${finding.line_start} ${finding.claim}`).join(" · ") : "No tool findings returned.")}</p></div>}
               {earlyFinish && <div className="event-note"><strong>Finished early</strong><p>{earlyFinish.reason} {earlyFinish.calls_saved ? `At least ${earlyFinish.calls_saved} model calls saved.` : ""}</p></div>}
 
               {events.length === 0 && runState !== "error" ? (
@@ -386,7 +407,7 @@ function App() {
               <section className="panel panelist-panel">
                 <div className="panel-heading compact-heading"><div className="panel-title"><span className="panel-icon purple"><UsersRound size={15} /></span><span><strong>Review panel</strong><small>{started ? `${started.model_ids.length} models · aliases hide identity` : "Anonymized during debate"}</small></span></div><span className="blind-chip"><ShieldCheck size={12} />Blind</span></div>
                 <div className="panelist-list">
-                  {panelists(started).map((model) => <div className="panelist-row" key={model.id}><span className={`alias-avatar alias-${model.alias.toLowerCase()}`}>{model.alias}</span><span className="panelist-name"><strong>{model.id}</strong><small>{model.id === started?.judge_model_id ? "Also serving as judge" : "Debater · identity hidden"}</small></span><span className={`model-live ${running ? "is-running" : ""}`} />{started?.judge_model_id === model.id && <span className="judge-mini">JUDGE</span>}</div>)}
+                {panelists(started).map((model) => <div className="panelist-row" key={model.id}><span className={`alias-avatar alias-${model.alias.toLowerCase()}`}>{model.alias}</span><span className="panelist-name"><strong>{model.id}</strong><small>{model.assignment ? `${model.assignment.role} role · ${model.assignment.source}` : model.id === started?.judge_model_id ? "Also serving as judge" : "Debater · identity hidden"}</small></span><span className={`model-live ${running ? "is-running" : ""}`} />{started?.judge_model_id === model.id && <span className="judge-mini">JUDGE</span>}</div>)}
                   {!started && <div className="panelist-placeholder"><span className="alias-avatar alias-a">A</span><span className="alias-avatar alias-b">B</span><span className="alias-avatar alias-c">C</span><span>Aliases stay hidden from the panelists</span></div>}
                 </div>
               </section>
@@ -396,6 +417,10 @@ function App() {
           </div>
 
           <footer className="page-footer"><span><span className="status-dot" /> Local-first review</span><span><Clock3 size={13} />{final?.usage ? `${final.usage.calls} model calls · ${final.usage.elapsed_ms} ms recorded` : apiMode === "mock" ? "Recorded fixture · no model calls" : healthOk ? "Live model review" : "Waiting for backend"}</span><span>Quorum preview <span className="footer-dot">·</span> {apiMode === "mock" ? `${fixtures.length} scenarios` : `${packs.length} packs · ${models.length} models`}</span></footer>
+          </> : null}
+          <div style={{ display: page === "models" ? "contents" : "none" }}><ModelManagerPage models={models} packs={packs} apiMode={apiMode} onModelsChanged={() => setReloadKey((key) => key + 1)} onViewProfiles={() => setPage("profiles")} /></div>
+          <div style={{ display: page === "profiles" ? "contents" : "none" }}><ProfilesPage packs={packs} models={models} defaultPack={selectedPack} apiMode={apiMode} active={page === "profiles"} /></div>
+          <div style={{ display: page === "eval" ? "contents" : "none" }}><EvaluationPage packs={packs} models={availableModels} defaultPack={selectedPack} defaultModels={selectedModels} defaultJudge={judgeModelId} defaultRounds={maxRounds} apiMode={apiMode} active={page === "eval"} /></div>
         </div>
       </main>
     </div>
@@ -413,6 +438,10 @@ type LiveSetupProps = {
   maxRounds: number;
   escalate: "always" | "auto";
   frameEnabled: boolean;
+  roleMode: "off" | "profile";
+  outsiderEnabled: boolean;
+  groundEnabled: boolean;
+  groundingAvailable: boolean;
   loading: boolean;
   onPackChange: (id: string) => void;
   onCategoryChange: (category: string) => void;
@@ -421,13 +450,19 @@ type LiveSetupProps = {
   onRoundsChange: (rounds: number) => void;
   onEscalateChange: (value: "always" | "auto") => void;
   onFrameChange: (enabled: boolean) => void;
+  onRoleModeChange: (mode: "off" | "profile") => void;
+  onOutsiderChange: (enabled: boolean) => void;
+  onGroundChange: (enabled: boolean) => void;
 };
 
 function LiveSetup({
   packs, models, availableModels, selectedPack, selectedCategory, selectedModels, judgeModelId,
-  maxRounds, escalate, frameEnabled, loading, onPackChange, onCategoryChange, onToggleModel, onJudgeChange, onRoundsChange, onEscalateChange, onFrameChange,
+  maxRounds, escalate, frameEnabled, roleMode, outsiderEnabled, groundEnabled, groundingAvailable,
+  loading, onPackChange, onCategoryChange, onToggleModel, onJudgeChange, onRoundsChange,
+  onEscalateChange, onFrameChange, onRoleModeChange, onOutsiderChange, onGroundChange,
 }: LiveSetupProps) {
   const pack = packs.find((item) => item.id === selectedPack);
+  const reviewPack = pack?.modes.includes("review") ?? false;
   const visibleModels = models;
   const selectedFamilyCount = new Set(availableModels.filter((model) => selectedModels.includes(model.id)).map((model) => model.family || model.id)).size;
   return (
@@ -441,6 +476,11 @@ function LiveSetup({
         <label className="setup-field"><span>Escalation</span><select value={escalate} onChange={(event) => onEscalateChange(event.target.value as "always" | "auto")}><option value="always">Full debate</option><option value="auto">Escalate on disagreement</option></select></label>
         <label className="setup-field"><span>Neutral framing</span><select value={String(frameEnabled)} onChange={(event) => onFrameChange(event.target.value === "true")}><option value="true">Enabled</option><option value="false">Disabled</option></select></label>
       </div>
+      {reviewPack && <div className="advanced-run-options" aria-label="Advanced review options">
+        <label className="run-option"><input type="checkbox" checked={roleMode === "profile"} onChange={(event) => onRoleModeChange(event.target.checked ? "profile" : "off")} /><span><strong>Assign roles from profiles</strong><small>Give reviewers attacker, maintainer, or operator roles based on calibration results.</small></span></label>
+        <label className={`run-option ${selectedModels.length < 3 ? "run-option-disabled" : ""}`}><input type="checkbox" checked={outsiderEnabled && selectedModels.length >= 3} disabled={selectedModels.length < 3} onChange={(event) => onOutsiderChange(event.target.checked)} /><span><strong>Include a cold outsider</strong><small>With three or more models, the weakest specialist reviews the input alone in round 0.</small></span></label>
+        <label className={`run-option ${!groundingAvailable ? "run-option-disabled" : ""}`}><input type="checkbox" checked={groundEnabled && groundingAvailable} disabled={!groundingAvailable} onChange={(event) => onGroundChange(event.target.checked)} /><span><strong>Run Semgrep grounding</strong><small>{groundingAvailable ? "Static analysis can mark code findings as tool-confirmed." : "Semgrep is not available in the backend environment."}</small></span></label>
+      </div>}
       <div className="model-select-heading"><span>Review panel</span><small>Choose 1–6 registered models. Weights stay hidden from debaters.</small></div>
       {loading ? <div className="model-empty"><LoaderCircle className="spin" size={15} />Loading registered models…</div> : visibleModels.length === 0 ? <div className="model-empty"><UsersRound size={16} />No available models. Add one through the backend CLI, then refresh.</div> : (
         <div className="model-grid">
@@ -496,7 +536,7 @@ function MessageCard({ message, aliases }: { message: ModelMessage; aliases: Rec
     <div className={`message-card ${failed ? "message-failed" : ""}`}>
       <span className={`alias-avatar alias-${alias.toLowerCase()}`}>{alias}</span>
       <div className="message-body">
-        <div className="message-meta"><strong>Reviewer {alias}</strong><span className="message-verdict">{message.position?.verdict?.replace("_", " ") ?? "unsure"}</span><span className="confidence">{fmt(message.position?.confidence ?? 0)} confidence</span>{message.changed && <span className="flip-badge"><ArrowDown size={11} />Changed</span>}</div>
+        <div className="message-meta"><strong>Reviewer {alias}</strong><span className="message-verdict">{message.position?.verdict?.replace("_", " ") ?? "unsure"}</span><span className="confidence">{fmt(message.position?.confidence ?? 0)} confidence</span>{message.role && <span className="role-chip">{message.role}</span>}{message.changed && <span className="flip-badge"><ArrowDown size={11} />Changed</span>}</div>
         <p>{failed ? message.error : message.text || (message.findings.length ? `${message.findings.length} finding(s) reported.` : "No issue found.")}</p>
         {message.changed && message.changed_reason && <div className="change-reason">Changed position: {message.changed_reason}</div>}
         {message.critique && (message.critique.strongest || message.critique.biggest_blind_spot || message.critique.missed_by_all) && <div className="critique-card"><strong>Peer critique</strong>{message.critique.strongest && <small><b>Strongest:</b> {message.critique.strongest}</small>}{message.critique.biggest_blind_spot && <small><b>Blind spot:</b> {message.critique.biggest_blind_spot}</small>}{message.critique.missed_by_all && <small><b>Missed by all:</b> {message.critique.missed_by_all}</small>}</div>}
@@ -513,7 +553,7 @@ function ClusterList({ title, clusters, tone }: { title: string; clusters: Clust
 
 function panelists(started?: RunStarted) {
   if (!started) return [];
-  return started.model_ids.map((id) => ({ id, alias: started.aliases[id] ?? "?" })).sort((a, b) => a.alias.localeCompare(b.alias));
+  return started.model_ids.map((id) => ({ id, alias: started.aliases[id] ?? "?", assignment: started.roles?.[id] })).sort((a, b) => a.alias.localeCompare(b.alias));
 }
 
 function scenarioName(file: string) {
@@ -525,6 +565,244 @@ function stopDescription(reason: string) {
   if (reason === "stalemate") return "The panel stopped changing before reaching consensus.";
   if (reason === "budget") return "The run reached its configured resource budget.";
   return "The configured round limit was reached.";
+}
+
+function ModelManagerPage({ models, packs, apiMode, onModelsChanged, onViewProfiles }: { models: ModelInfo[]; packs: PackInfo[]; apiMode: "mock" | "live"; onModelsChanged: () => void; onViewProfiles: () => void }) {
+  const [provider, setProvider] = useState<ModelCreate["provider"]>("ollama");
+  const [tag, setTag] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [apiKeyEnv, setApiKeyEnv] = useState("");
+  const [family, setFamily] = useState("");
+  const [license, setLicense] = useState("");
+  const [openWeight, setOpenWeight] = useState(false);
+  const [locality, setLocality] = useState<"local" | "hosted">("local");
+  const [calibrate, setCalibrate] = useState(true);
+  const [selectedPacks, setSelectedPacks] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [job, setJob] = useState<{ id: string; done: number; total: number; status: "running" | "done" | "error"; message: string } | null>(null);
+  const stopJob = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => stopJob.current?.(), []);
+  const usingHostedProvider = provider === "digitalocean" || locality === "hosted";
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (apiMode !== "live" || busy || !tag.trim()) return;
+    setBusy(true); setError(""); setMessage(""); setJob(null);
+    try {
+      const payload: ModelCreate = {
+        provider,
+        tag: tag.trim(),
+        ...(provider === "openai_compat" && baseUrl.trim() ? { base_url: baseUrl.trim() } : {}),
+        ...(apiKeyEnv.trim() ? { api_key_env: apiKeyEnv.trim() } : {}),
+        ...(family.trim() ? { family: family.trim() } : {}),
+        ...(license.trim() ? { license: license.trim() } : {}),
+        open_weight: openWeight,
+        ...(provider !== "ollama" ? { locality: provider === "digitalocean" ? "hosted" : locality } : {}),
+        calibrate,
+        ...(calibrate && selectedPacks.length ? { packs: selectedPacks } : {}),
+      };
+      const created = await addModel(payload);
+      setTag("");
+      onModelsChanged();
+      if (!created.job_id) {
+        setMessage(`${created.model.tag} was registered. Calibration was not started.`);
+        setBusy(false);
+        return;
+      }
+      setJob({ id: created.job_id, done: 0, total: 0, status: "running", message: "Calibration queued" });
+      stopJob.current?.();
+      stopJob.current = subscribeToJob(created.job_id, (event) => {
+        const data = asRecord(event.data);
+        if (event.event === "job_progress") {
+          setJob((current) => current ? { ...current, done: Number(data.done ?? 0), total: Number(data.total ?? 0), message: String(data.message ?? "Calibrating…") } : current);
+        } else if (event.event === "job_done") {
+          setJob((current) => current ? { ...current, status: "done", message: "Calibration finished. The model profile is available." } : current);
+          setMessage(`${created.model.tag} was registered and calibration finished.`);
+          setBusy(false); onModelsChanged();
+        } else if (event.event === "job_error") {
+          const detail = String(data.message ?? "Calibration failed.");
+          setJob((current) => current ? { ...current, status: "error", message: detail } : current);
+          setError(`The model was registered, but calibration failed: ${detail}`);
+          setBusy(false); onModelsChanged();
+        }
+      }, (caught) => {
+        setError(caught.message); setBusy(false); onModelsChanged();
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to register this model.");
+      setBusy(false);
+    }
+  }
+
+  return <>
+    <section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-line" />MODEL REGISTRY</div><h1>Model manager</h1><p>Register providers, review locality and license metadata, and calibrate models against a pack.</p></div><div className="heading-meta"><span className="meta-icon"><UsersRound size={15} /></span><span><strong>{models.length} registered</strong><small>Configured by this backend</small></span></div></section>
+    {apiMode !== "live" && <div className="event-note event-warning">Model registration requires live mode. Start the backend and launch Vite with <code>VITE_API=live</code>.</div>}
+    {error && <div className="error-banner page-error"><TriangleAlert size={16} /><span><strong>Model setup needs attention</strong><small>{error}</small></span></div>}
+    {message && !error && <div className="event-note"><strong>Model setup updated</strong><p>{message}</p></div>}
+    {job && <section className="panel job-panel"><div className="job-panel-header"><strong>Calibration · {job.id}</strong><span className={`job-status ${job.status}`}>{job.status}</span></div><p>{job.message}</p>{job.status === "running" && <><div className="job-progress-track"><i style={{ width: `${job.total ? Math.min(100, job.done / job.total * 100) : 5}%` }} /></div><small>{job.total ? `${job.done} / ${job.total} items` : "Waiting for calibration work"}</small></>}{job.status === "done" && <button className="text-button" onClick={onViewProfiles}>View skill profile <ArrowRight size={13} /></button>}</section>}
+    <div className="manager-grid">
+      <section className="panel manager-form-panel"><div className="panel-heading"><div className="panel-title"><span className="panel-icon purple"><UsersRound size={15} /></span><span><strong>Add a model</strong><small>Credentials stay in the backend environment</small></span></div></div>
+        <form className="manager-form" onSubmit={(event) => { void submit(event); }}>
+          <label className="setup-field"><span>Provider</span><select value={provider} onChange={(event) => { const next = event.target.value as ModelCreate["provider"]; setProvider(next); setLocality(next === "ollama" ? "local" : "hosted"); setOpenWeight(next === "ollama"); setApiKeyEnv(next === "digitalocean" ? "DIGITALOCEAN_MODEL_ACCESS_KEY" : ""); }}><option value="ollama">Ollama</option><option value="openai_compat">OpenAI-compatible API</option><option value="digitalocean">DigitalOcean inference</option></select></label>
+          <label className="setup-field"><span>Model tag or deployment ID</span><input required maxLength={200} value={tag} onChange={(event) => setTag(event.target.value)} placeholder={provider === "ollama" ? "qwen2.5:14b" : "model-name"} /></label>
+          {provider === "openai_compat" && <label className="setup-field"><span>Base URL</span><input required type="url" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="http://127.0.0.1:1234/v1" /></label>}
+          {provider !== "ollama" && <label className="setup-field"><span>API key environment variable <small>{provider === "digitalocean" ? "required in backend environment" : "optional"}</small></span><input required={provider === "digitalocean"} pattern="[A-Za-z_][A-Za-z0-9_]*" value={apiKeyEnv} onChange={(event) => setApiKeyEnv(event.target.value)} placeholder={provider === "digitalocean" ? "DIGITALOCEAN_MODEL_ACCESS_KEY" : "MODEL_API_KEY"} /><small className="field-help">Enter the environment variable name only. Never paste the key. Set its value in the backend process environment first.</small></label>}
+          <div className="manager-form-row"><label className="setup-field"><span>Model family <small>optional</small></span><input value={family} onChange={(event) => setFamily(event.target.value)} placeholder="Qwen 2.5" /></label><label className="setup-field"><span>License <small>optional</small></span><input value={license} onChange={(event) => setLicense(event.target.value)} placeholder="Apache-2.0" /></label></div>
+          <div className="manager-form-row">{provider !== "ollama" ? <label className="setup-field"><span>Locality</span><select value={provider === "digitalocean" ? "hosted" : locality} disabled={provider === "digitalocean"} onChange={(event) => setLocality(event.target.value as "local" | "hosted")}><option value="local">Local</option><option value="hosted">Hosted</option></select></label> : <div className="field-help locality-help">Ollama locality is inferred from the backend’s configured Ollama URL.</div>}<label className="check-field"><input type="checkbox" checked={openWeight} onChange={(event) => setOpenWeight(event.target.checked)} /><span>Open-weight model</span></label></div><small className="field-help">For API providers, mark open-weight only after checking the model’s license and weight availability.</small>
+          <label className="check-field"><input type="checkbox" checked={calibrate} onChange={(event) => setCalibrate(event.target.checked)} /><span>Calibrate after registration</span></label>
+          {calibrate && <label className="setup-field"><span>Calibration packs <small>choose none to use all</small></span><select multiple value={selectedPacks} onChange={(event) => setSelectedPacks(Array.from(event.currentTarget.selectedOptions, (option) => option.value))}>{packs.map((pack) => <option key={pack.id} value={pack.id}>{pack.name} · {pack.corpus_counts?.calibration ?? "?"} examples</option>)}</select></label>}
+          {usingHostedProvider && <div className="hosted-note"><ShieldAlert size={14} /><span>This provider is hosted. Review inputs sent to this model leave this machine.</span></div>}
+          <button className="primary-button manager-submit" type="submit" disabled={apiMode !== "live" || busy || !tag.trim()}>{busy ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />}{busy ? "Registering / calibrating…" : "Register model"}</button>
+        </form>
+      </section>
+      <section className="panel registry-panel"><div className="panel-heading"><div className="panel-title"><span className="panel-icon"><Layers3 size={15} /></span><span><strong>Registered models</strong><small>Provider, locality, license, and registry state</small></span></div><button className="icon-button" aria-label="Refresh model registry" title="Refresh models" onClick={onModelsChanged}><RefreshCw size={14} /></button></div>
+        <div className="registry-list">{models.length ? models.map((model) => <div className="registry-row" key={model.id}><div className="registry-model"><strong>{model.tag || model.id}</strong><small>{model.family || model.provider} · {model.provider} · {model.license || "license unknown"}</small>{model.status_detail && <small className="model-detail">{model.status_detail}</small>}</div><div className="registry-badges"><span className={`locality-tag ${model.locality}`}>{model.locality}</span><span className={`job-status ${model.status}`}>{model.status}</span><span className={`model-state ${model.open_weight ? "ready" : "closed"}`}>{model.open_weight ? "OPEN WEIGHT" : "CLOSED WEIGHT"}</span></div></div>) : <div className="model-empty">No models are registered yet.</div>}</div>
+      </section>
+    </div>
+  </>;
+}
+
+function ProfilesPage({ packs, models, defaultPack, apiMode, active }: { packs: PackInfo[]; models: ModelInfo[]; defaultPack: string; apiMode: "mock" | "live"; active: boolean }) {
+  const [packId, setPackId] = useState(defaultPack);
+  const [response, setResponse] = useState<ProfilesResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const pack = packs.find((item) => item.id === packId);
+  useEffect(() => { if (defaultPack && !packs.some((item) => item.id === packId)) setPackId(defaultPack); }, [defaultPack, packId, packs]);
+  useEffect(() => {
+    let active = true;
+    if (!active || apiMode !== "live" || !packId) { if (apiMode !== "live") setResponse(null); return () => { active = false; }; }
+    setLoading(true); setError("");
+    void getProfiles(packId).then((data) => { if (active) setResponse(data); }).catch((caught: unknown) => { if (active) setError(caught instanceof Error ? caught.message : "Unable to load model profiles."); }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [active, apiMode, packId, refreshKey]);
+  const modelIds = [...new Set([...models.map((model) => model.id), ...Object.keys(response?.profiles ?? {})])];
+  return <>
+    <section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-line" />CALIBRATED SKILL</div><h1>Skill profiles</h1><p>Calibration accuracy and conservative vote weights, broken out by model and issue category.</p></div><label className="profile-pack-select"><span>Pack</span><select value={packId} onChange={(event) => setPackId(event.target.value)} disabled={!packs.length}>{packs.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></section>
+    {apiMode !== "live" && <div className="event-note event-warning">Skill profiles require live mode and stored calibration results. Start the backend and launch Vite with <code>VITE_API=live</code>.</div>}
+    {error && <div className="error-banner page-error"><TriangleAlert size={16} /><span><strong>Profiles unavailable</strong><small>{error}</small></span></div>}
+    <section className="panel profiles-panel"><div className="panel-heading"><div className="panel-title"><span className="panel-icon green"><Gauge size={15} /></span><span><strong>{pack?.name ?? packId ?? "Model profiles"}</strong><small>{pack?.categories.length ?? 0} categories · default weight {response ? fmt(response.default_weight) : "—"}</small></span></div><button className="icon-button" aria-label="Reload profiles" title="Reload profiles" onClick={() => setRefreshKey((key) => key + 1)}><RefreshCw size={14} /></button></div>
+      {loading ? <div className="model-empty"><LoaderCircle className="spin" size={15} />Loading calibration profiles…</div> : !pack?.categories.length ? <div className="model-empty">Select a pack to see its calibrated categories.</div> : <div className="profile-table-wrap"><table className="profile-table"><thead><tr><th>Model</th>{pack.categories.map((category) => <th key={category} title={pack.category_descriptions?.[category]}>{category.replaceAll("_", " ")}</th>)}</tr></thead><tbody>{modelIds.map((modelId) => { const model = models.find((item) => item.id === modelId); const cells = response?.profiles[modelId]?.[packId] ?? {}; return <tr key={modelId}><th><strong>{model?.tag || modelId}</strong><small>{model?.family || model?.provider || "Stored profile"} · {model?.locality ?? "unknown locality"}</small></th>{pack.categories.map((category) => <ProfileTableCell key={category} cell={cells[category]} defaultWeight={response?.default_weight ?? 0} />)}</tr>; })}</tbody></table>{!loading && modelIds.length === 0 && <div className="model-empty">No calibration data for this pack yet. Register a model and run calibration in Model Manager.</div>}</div>}
+    </section>
+    <div className="profile-explainer"><ShieldCheck size={14} /><span><strong>How to read this:</strong> n is the number of calibration examples; rate is the observed correctness; the interval shown is the Wilson 95% lower bound used as the conservative weight. Small synthetic samples can produce unstable weights.</span></div>
+  </>;
+}
+
+function ProfileTableCell({ cell, defaultWeight }: { cell?: ProfileCell; defaultWeight: number }) {
+  if (!cell) return <td className="profile-cell profile-empty"><strong>{fmt(defaultWeight)}</strong><small>n 0 · default</small></td>;
+  const hue = Math.round(cell.weight * 112);
+  return <td className="profile-cell" style={{ backgroundColor: `hsl(${hue} 34% 95%)` }} title={`Weight ${fmt(cell.weight)} · observed rate ${fmt(cell.rate)} · Wilson 95% lower bound ${fmt(cell.lower)} · ${cell.correct}/${cell.n} correct`}><strong>{fmt(cell.weight)}</strong><small>n {cell.n} · rate {fmt(cell.rate)}</small><small>95% LB {fmt(cell.lower)}</small></td>;
+}
+
+function EvaluationPage({ packs, models, defaultPack, defaultModels, defaultJudge, defaultRounds, apiMode, active }: { packs: PackInfo[]; models: ModelInfo[]; defaultPack: string; defaultModels: string[]; defaultJudge: string; defaultRounds: number; apiMode: "mock" | "live"; active: boolean }) {
+  const [packId, setPackId] = useState(defaultPack);
+  const [modelIds, setModelIds] = useState(defaultModels);
+  const [judgeId, setJudgeId] = useState(defaultJudge);
+  const [maxRounds, setMaxRounds] = useState(defaultRounds);
+  const [limit, setLimit] = useState("");
+  const [roleEvaluation, setRoleEvaluation] = useState(false);
+  const [result, setResult] = useState<EvalResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [job, setJob] = useState<{ id: string; done: number; total: number; message: string; status: "running" | "done" | "error" } | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const stopJob = useRef<(() => void) | null>(null);
+  const pack = packs.find((item) => item.id === packId);
+  const reviewPack = pack?.modes.includes("review") ?? false;
+  const selectedHosted = models.filter((model) => modelIds.includes(model.id) && model.locality === "hosted");
+  useEffect(() => () => stopJob.current?.(), []);
+  useEffect(() => { if (defaultPack && !packs.some((item) => item.id === packId)) setPackId(defaultPack); }, [defaultPack, packId, packs]);
+  useEffect(() => { setModelIds(defaultModels); }, [defaultModels]);
+  useEffect(() => { setJudgeId(defaultJudge); }, [defaultJudge]);
+  useEffect(() => {
+    let current = true;
+    if (!active || apiMode !== "live" || !packId) return () => { current = false; };
+    setLoading(true); setError("");
+    void getLatestEval(packId).then((data) => { if (current) setResult(data); }).catch((caught: unknown) => {
+      if (!current) return;
+      const message = caught instanceof Error ? caught.message : "Unable to load the latest evaluation.";
+      if (/no evaluation|no_eval/i.test(message)) setResult(null); else setError(message);
+    }).finally(() => { if (current) setLoading(false); });
+    return () => { current = false; };
+  }, [active, apiMode, packId, refreshKey]);
+
+  function toggleModel(id: string) {
+    setModelIds((current) => current.includes(id) ? current.filter((modelId) => modelId !== id) : current.length < 6 ? [...current, id] : current);
+  }
+  async function startEvaluation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (apiMode !== "live" || busy || !packId || modelIds.length === 0) return;
+    setBusy(true); setError(""); setJob(null);
+    try {
+      const payload: EvalRequest = { pack: packId, model_ids: modelIds, judge_model_id: judgeId || null, max_rounds: maxRounds, roles: roleEvaluation && reviewPack, ...(limit ? { limit: Number(limit) } : {}) };
+      const jobId = await startEval(payload);
+      setJob({ id: jobId, done: 0, total: 0, message: "Evaluation queued", status: "running" });
+      stopJob.current?.();
+      stopJob.current = subscribeToJob(jobId, (event) => {
+        const data = asRecord(event.data);
+        if (event.event === "job_progress") setJob((current) => current ? { ...current, done: Number(data.done ?? 0), total: Number(data.total ?? 0), message: String(data.message ?? "Running evaluation…") } : current);
+        if (event.event === "job_done") {
+          setJob((current) => current ? { ...current, status: "done", message: "Evaluation finished." } : current);
+          setBusy(false); setRefreshKey((key) => key + 1);
+        }
+        if (event.event === "job_error") {
+          const detail = String(data.message ?? "Evaluation failed.");
+          setJob((current) => current ? { ...current, status: "error", message: detail } : current);
+          setError(detail); setBusy(false);
+        }
+      }, (caught) => { setError(caught.message); setBusy(false); });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to start the evaluation.");
+      setBusy(false);
+    }
+  }
+
+  return <>
+    <section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-line" />HELD-OUT EVALUATION</div><h1>Evaluations</h1><p>Compare six baseline conditions and optionally the role ablation on held-out examples. Starting a run makes inference calls.</p></div><label className="profile-pack-select"><span>Pack</span><select value={packId} onChange={(event) => setPackId(event.target.value)} disabled={!packs.length}>{packs.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.corpus_counts?.heldout ?? "?"} held-out</option>)}</select></label></section>
+    {apiMode !== "live" && <div className="event-note event-warning">Evaluation requires live mode and a configured model provider. Start the backend and launch Vite with <code>VITE_API=live</code>.</div>}
+    {error && <div className="error-banner page-error"><TriangleAlert size={16} /><span><strong>Evaluation needs attention</strong><small>{error}</small></span></div>}
+    <section className="panel eval-config-panel"><div className="panel-heading"><div className="panel-title"><span className="panel-icon purple"><Activity size={15} /></span><span><strong>Evaluation setup</strong><small>Pick the panel used across the baseline conditions</small></span></div><span className="selection-count">{modelIds.length} / 6 selected</span></div>
+      <form className="eval-config" onSubmit={(event) => { void startEvaluation(event); }}>
+        <div className="eval-model-grid">{models.map((model) => <label className={`model-option ${modelIds.includes(model.id) ? "selected" : ""}`} key={model.id}><input type="checkbox" checked={modelIds.includes(model.id)} disabled={!modelIds.includes(model.id) && modelIds.length >= 6} onChange={() => toggleModel(model.id)} /><span className="model-check">{modelIds.includes(model.id) && <Check size={11} />}</span><span className="model-option-copy"><strong>{model.tag || model.id}</strong><small>{model.family} · {model.license || "license unknown"}</small></span><span className="locality-tag">{model.locality}</span></label>)}{models.length === 0 && <div className="model-empty">No available open-weight models. Register and calibrate a model in Model Manager first.</div>}</div>
+        <div className="eval-options"><label className="setup-field"><span>Judge <small>optional</small></span><select value={judgeId} onChange={(event) => setJudgeId(event.target.value)}><option value="">Use backend default</option>{models.map((model) => <option key={model.id} value={model.id}>{model.tag || model.id}</option>)}</select></label><label className="setup-field"><span>Debate rounds</span><select value={maxRounds} onChange={(event) => setMaxRounds(Number(event.target.value))}><option value={0}>Blind only</option><option value={1}>1 round</option><option value={2}>2 rounds</option><option value={3}>3 rounds</option></select></label><label className="setup-field"><span>Held-out item limit <small>blank uses all</small></span><input type="number" min={1} max={pack?.corpus_counts?.heldout} value={limit} onChange={(event) => setLimit(event.target.value)} placeholder={String(pack?.corpus_counts?.heldout ?? "All items")} /></label></div>
+        <label className={`run-option eval-role-option ${!reviewPack ? "run-option-disabled" : ""}`}><input type="checkbox" checked={roleEvaluation && reviewPack} disabled={!reviewPack} onChange={(event) => setRoleEvaluation(event.target.checked)} /><span><strong>Include role ablation (condition 7)</strong><small>{reviewPack ? "Adds a full debate condition with profile-assigned roles; this makes the evaluation longer." : "Role evaluation is available for code-review packs only."}</small></span></label>
+        {selectedHosted.length > 0 && <div className="hosted-note"><ShieldAlert size={14} /><span>Hosted models selected: evaluation inputs will be sent to {selectedHosted.map((model) => model.tag || model.id).join(", ")} through their configured providers.</span></div>}
+        <button className="primary-button manager-submit" type="submit" disabled={apiMode !== "live" || busy || modelIds.length === 0 || !packId}>{busy ? <LoaderCircle className="spin" size={14} /> : <Play size={13} fill="currentColor" />}{busy ? "Evaluation running…" : "Run held-out evaluation"}</button>
+      </form>
+    </section>
+    {job && <section className="panel job-panel eval-job"><div className="job-panel-header"><strong>Evaluation · {job.id}</strong><span className={`job-status ${job.status}`}>{job.status}</span></div><p>{job.message}</p>{job.status === "running" && <><div className="job-progress-track"><i style={{ width: `${job.total ? Math.min(100, job.done / job.total * 100) : 5}%` }} /></div><small>{job.total ? `${job.done} / ${job.total} steps` : "Waiting for evaluation work"}</small></>}</section>}
+    <section className="panel eval-results-panel"><div className="panel-heading"><div className="panel-title"><span className="panel-icon green"><BadgeCheck size={15} /></span><span><strong>Latest results</strong><small>{result ? `${result.n_items} held-out items · ${new Date(result.created_at).toLocaleString()}` : "No evaluation result loaded"}</small></span></div><button className="icon-button" aria-label="Reload latest evaluation" title="Reload latest evaluation" onClick={() => setRefreshKey((key) => key + 1)}><RefreshCw size={14} /></button></div>
+      {loading ? <div className="model-empty"><LoaderCircle className="spin" size={15} />Loading results…</div> : !result ? <div className="model-empty">No evaluation has been recorded for this pack. Configure a panel and run an evaluation above.</div> : <div className="eval-results-content"><div className="eval-result-meta"><span><strong>{result.n_positive}</strong> positive</span><span><strong>{result.n_negative}</strong> negative</span><span><strong>{result.model_ids.length}</strong> models</span><span>Judge: {models.find((model) => model.id === result.judge_model_id)?.tag ?? result.judge_model_id}</span></div><EvaluationChart conditions={result.conditions} /><div className="eval-table-wrap"><table className="eval-table"><thead><tr><th>Condition</th><th>Items</th><th>TP / FP / TN / FN</th><th>Precision</th><th>Recall</th><th>F1</th><th>False-positive rate</th><th>Accuracy</th></tr></thead><tbody>{result.conditions.map((condition) => <EvaluationRow key={condition.id} condition={condition} />)}</tbody></table></div>
+        <div className="movement-panel"><strong>Debate movement</strong><span>Toward correct: {result.debate_movement.toward_correct}</span><span>Toward wrong: {result.debate_movement.toward_wrong}</span><span>Neutral: {result.debate_movement.neutral}</span>{result.debate_movement.note && <small>{result.debate_movement.note}</small>}</div>
+        {result.notes.length > 0 && <div className="eval-notes"><strong>Run notes</strong>{result.notes.map((note, index) => <p key={index}>{note}</p>)}</div>}
+      </div>}
+    </section>
+    <div className="profile-explainer"><ShieldAlert size={14} /><span>These results describe this pack and selected models only. Small synthetic corpora produce wide, unstable intervals; do not treat them as production security evidence.</span></div>
+  </>;
+}
+
+function EvaluationRow({ condition }: { condition: EvalCondition }) {
+  return <tr className={!condition.available ? "condition-unavailable" : ""}><th><strong>{condition.id}. {condition.name}</strong>{!condition.available && <small>{condition.reason_unavailable}</small>}</th><td>{condition.available ? condition.n_items : "—"}</td><td>{condition.available ? `${condition.tp} / ${condition.fp} / ${condition.tn} / ${condition.fn}` : "—"}</td><EvalMetric interval={condition.precision} /><EvalMetric interval={condition.recall} /><EvalMetric interval={condition.f1} /><EvalMetric interval={condition.fpr} /><EvalMetric interval={condition.accuracy} /></tr>;
+}
+
+function EvaluationChart({ conditions }: { conditions: EvalCondition[] }) {
+  return <section className="condition-chart" aria-label="F1 comparison chart"><div className="section-title">F1 by condition <small>with 95% intervals</small></div>{conditions.map((condition) => {
+    const interval = condition.f1;
+    const value = interval?.value ?? 0;
+    const lo = interval?.lo ?? 0;
+    const hi = interval?.hi ?? 0;
+    return <div className="condition-chart-row" key={condition.id}><span className="condition-chart-label">{condition.id}. {condition.name}</span>{condition.available && interval ? <div className="condition-chart-track" role="img" aria-label={`${condition.name}: F1 ${fmt(value)}, 95 percent interval ${fmt(lo)} to ${fmt(hi)}`}><i className="condition-chart-fill" style={{ width: `${value * 100}%` }} /><b className="condition-chart-interval" style={{ left: `${lo * 100}%`, width: `${Math.max(hi - lo, 0.004) * 100}%` }} /><em className="condition-chart-point" style={{ left: `${value * 100}%` }} /></div> : <div className="condition-chart-unavailable">{condition.reason_unavailable || "Unavailable"}</div>}<strong className="condition-chart-value">{condition.available && interval ? fmt(value) : "—"}</strong></div>;
+  })}<div className="condition-chart-axis"><span>0%</span><span>50%</span><span>100%</span></div></section>;
+}
+
+function EvalMetric({ interval }: { interval?: EvalInterval | null }) {
+  if (!interval) return <td className="eval-metric-empty">—</td>;
+  return <td className="eval-metric"><strong>{fmt(interval.value)}</strong><small>95% [{fmt(interval.lo)}, {fmt(interval.hi)}]</small></td>;
 }
 
 export default App;

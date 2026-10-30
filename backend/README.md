@@ -5,7 +5,7 @@ Python 3.11+, FastAPI, SQLite. Runs without the UI.
 ```bash
 cd backend
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/pytest -q                      # 85 tests, no model server needed
+.venv/bin/pytest -q                      # no model server needed
 .venv/bin/quorum serve                   # http://127.0.0.1:8787
 ```
 
@@ -71,7 +71,7 @@ models and nothing measured with them may be published. Hand-made seed packs liv
 | `cluster.py` | B5 | Groups findings by file and line overlap, scores `sum(weight x confidence)` |
 | `calibrate.py`, `weights.py`, `stats.py` | B7 | Per-category Wilson lower bound; `weight = max(lower, 0.05)` |
 | `export.py` | B14 | Markdown and self-contained HTML transcript of a finished run |
-| `evaluate.py` | B8 | Six conditions on the held-out split, CSV and JSON |
+| `evaluate.py` | B8 | Six baseline conditions plus optional role condition 7, CSV and JSON |
 | `api.py`, `streams.py`, `cli.py` | B9 | Endpoints, replayable SSE, CLI |
 
 Design decisions worth knowing:
@@ -115,13 +115,15 @@ Design decisions worth knowing:
   data, the input is scanned for steering phrases, and the judge is warned when any are found.
   Detection is a heuristic; the real defence is the anonymous weighted vote.
 - **Evaluation honesty.** Weights come from the calibration split only, the evaluation refuses a
-  held-out split that shares an id or identical input with calibration, condition 6 (tools) reports
-  as unavailable until B10 exists, and every proportion has a 95% interval.
+  held-out split that shares an id or identical input with calibration, condition 6 (tools) is marked
+  unavailable when the Semgrep grounder is unavailable or the pack is not a review pack, and every
+  proportion has a 95% interval.
 
 ## Not done yet
 
-- **Real-model validation.** Ollama is not installed on this machine, so the adapters are tested
-  against an HTTP stand-in (`tests/fake_ollama.py`) and with mocked responses, never against a real
-  model. First real run will need prompt tuning for small models.
+- **Real-model validation is thin.** The adapters are tested against an HTTP stand-in
+  (`tests/fake_ollama.py`) and mocked responses, and have been run for real with qwen2.5:3b,
+  llama3.2:3b and gemma3:4b through Ollama on an 8 GB M2. That first run exposed three bugs (now
+  fixed) and showed near-chance calibration on the 9-item dev split; the prompts and any real held-out
+  numbers still need work on the real packs. The model lineup and judge remain unvalidated.
 - **B10** is Semgrep-only; running the code's tests is not built, and the rules cover the four dev-pack bug types.
-- The model lineup, parallelism and judge model wait on hardware (8 GB M2).
