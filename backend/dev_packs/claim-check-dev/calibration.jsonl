@@ -1,0 +1,6 @@
+{"id": "c-cal-1", "category": "geography", "input": "Mount Kilimanjaro is in Tanzania.", "label": {"truth": true, "source_url": "https://en.wikipedia.org/wiki/Mount_Kilimanjaro"}}
+{"id": "c-cal-2", "category": "geography", "input": "The Danube flows into the Baltic Sea.", "label": {"truth": false, "source_url": "https://en.wikipedia.org/wiki/Danube"}}
+{"id": "c-cal-3", "category": "science", "input": "Water boils at a lower temperature at higher altitude.", "label": {"truth": true, "source_url": "https://en.wikipedia.org/wiki/Boiling_point"}}
+{"id": "c-cal-4", "category": "science", "input": "Sound travels faster in air than in water.", "label": {"truth": false, "source_url": "https://en.wikipedia.org/wiki/Speed_of_sound"}}
+{"id": "c-cal-5", "category": "history", "input": "The Berlin Wall fell in 1989.", "label": {"truth": true, "source_url": "https://en.wikipedia.org/wiki/Berlin_Wall"}}
+{"id": "c-cal-6", "category": "history", "input": "The Magna Carta was sealed in 1415.", "label": {"truth": false, "source_url": "https://en.wikipedia.org/wiki/Magna_Carta"}}
