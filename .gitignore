@@ -1,0 +1,13 @@
+.env
+.env.*
+*.gguf
+*.safetensors
+*.bin
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+dist/
+.DS_Store
+*.sqlite
+*.db
