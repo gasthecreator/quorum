@@ -313,6 +313,7 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--limit", type=int)
 
     sub.add_parser("profiles")
+    sub.add_parser("mcp", help="run the quorum-mcp stdio server for coding agents")
 
     m = sub.add_parser("models")
     m.add_argument("action", nargs="?", default="list", choices=["list", "add"])
@@ -336,6 +337,13 @@ def main(argv: list[str] | None = None) -> int:
         st = Settings.from_env()
         uvicorn.run("quorum.api:create_app", factory=True, host=a.host or st.host,
                     port=a.port or st.port, log_level="info")
+        return 0
+    if a.cmd == "mcp":
+        try:
+            from .mcp_server import main as mcp_main
+        except ImportError:
+            raise SystemExit("the MCP server needs: pip install 'quorum[mcp]'") from None
+        mcp_main()
         return 0
     if a.cmd == "packs":
         return _packs(a)
