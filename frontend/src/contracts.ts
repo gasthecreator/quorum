@@ -41,10 +41,26 @@ export type PackInfo = {
 
 export type ProfileCell = { n: number; correct: number; rate: number; lower: number; weight: number };
 export type ProfilesResponse = {
-  pack: string;
   default_weight: number;
   profiles: Record<string, Record<string, Record<string, ProfileCell>>>;
 };
+
+export type ModelCreate = {
+  provider: "ollama" | "openai_compat" | "digitalocean";
+  tag: string;
+  base_url?: string | null;
+  api_key_env?: string | null;
+  family?: string | null;
+  license?: string | null;
+  open_weight?: boolean | null;
+  locality?: "local" | "hosted" | null;
+  calibrate?: boolean;
+  packs?: string[] | null;
+};
+export type ModelCreated = { model: ModelInfo; job_id?: string | null };
+export type JobProgress = { job_id: string; done: number; total: number; message: string };
+export type JobDone = { job_id: string; result: Record<string, unknown> };
+export type JobError = { job_id: string; code: string; message: string };
 
 export type Health = {
   ok: boolean;

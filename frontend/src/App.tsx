@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Activity, ArrowDown, ArrowRight, BadgeCheck, Braces, Check, ChevronDown, CircleHelp,
   CircleStop, Clock3, Download, FileCode2, FileUp, Gauge, GitBranch, Layers3, LoaderCircle,
   MessageSquareText, Play, Radio, RefreshCw, ShieldAlert, ShieldCheck, Sparkles, Target,
   TriangleAlert, UsersRound, X,
 } from "lucide-react";
-import { downloadRunExport, getHealth, getModels, getPacks, loadFixtures, startFixtureRun, startLiveRun, subscribeToRun } from "./api";
-import type { ModelInfo, PackInfo, RunRequest } from "./contracts";
+import { addModel, downloadRunExport, getHealth, getModels, getPacks, getProfiles, loadFixtures, startFixtureRun, startLiveRun, subscribeToJob, subscribeToRun } from "./api";
+import type { ModelCreate, ModelInfo, PackInfo, ProfileCell, ProfilesResponse, RunRequest } from "./contracts";
 import type { Cluster, EventEnvelope, Fixture, FinalResult, JudgeRuling, ModelMessage, RunStarted } from "./types";
 
 type RoundFinished = { round: number; agreement: number };
@@ -40,6 +40,7 @@ function App() {
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [exportError, setExportError] = useState("");
+  const [page, setPage] = useState<"review" | "profiles" | "models">("review");
   const closeStream = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -218,14 +219,14 @@ function App() {
 
         <div className="nav-label">WORKSPACE</div>
         <nav className="primary-nav" aria-label="Main navigation">
-          <button className="nav-item active"><MessageSquareText size={17} /><span>Review room</span><span className="nav-shortcut">⌘ 1</span></button>
-          <button className="nav-item disabled" title="Available after F4"><Gauge size={17} /><span>Skill profiles</span><span className="nav-lock">F4</span></button>
+          <button className={`nav-item ${page === "review" ? "active" : ""}`} onClick={() => setPage("review")}><MessageSquareText size={17} /><span>Review room</span><span className="nav-shortcut">⌘ 1</span></button>
+          <button className={`nav-item ${page === "profiles" ? "active" : ""}`} onClick={() => setPage("profiles")}><Gauge size={17} /><span>Skill profiles</span></button>
           <button className="nav-item disabled" title="Available after F6"><Activity size={17} /><span>Evaluations</span><span className="nav-lock">F6</span></button>
         </nav>
 
         <div className="nav-label nav-label-spaced">TOOLS</div>
         <nav className="primary-nav" aria-label="Tools">
-          <button className="nav-item disabled" title="Available after F5"><UsersRound size={17} /><span>Model manager</span><span className="nav-lock">F5</span></button>
+          <button className={`nav-item ${page === "models" ? "active" : ""}`} onClick={() => setPage("models")}><UsersRound size={17} /><span>Model manager</span></button>
           <button className="nav-item disabled" title="Available after F8"><Braces size={17} /><span>Exports</span><span className="nav-lock">F8</span></button>
         </nav>
 
@@ -236,7 +237,7 @@ function App() {
 
       <main className="main-area">
         <header className="topbar">
-          <div className="breadcrumbs"><span>Workspace</span><ArrowRight size={13} /><strong>Review room</strong></div>
+          <div className="breadcrumbs"><span>Workspace</span><ArrowRight size={13} /><strong>{page === "review" ? "Review room" : page === "profiles" ? "Skill profiles" : "Model manager"}</strong></div>
           <div className="topbar-actions">
             <span className={`connection-pill ${apiMode === "live" && !healthOk ? "connection-offline" : ""}`}><span className="status-dot" />{apiMode === "mock" ? "Fixture mode" : backendLoading ? "Connecting to API" : healthOk ? "Live API connected" : "Live API unavailable"}</span>
             <span className="version-label">Contract 1.1.0</span>
@@ -246,6 +247,7 @@ function App() {
         </header>
 
         <div className="page-content">
+          {page === "review" ? <>
           <section className="page-heading">
             <div>
               <div className="eyebrow"><span className="eyebrow-line" />LOCAL REVIEW COUNCIL</div>
@@ -396,6 +398,9 @@ function App() {
           </div>
 
           <footer className="page-footer"><span><span className="status-dot" /> Local-first review</span><span><Clock3 size={13} />{final?.usage ? `${final.usage.calls} model calls · ${final.usage.elapsed_ms} ms recorded` : apiMode === "mock" ? "Recorded fixture · no model calls" : healthOk ? "Live model review" : "Waiting for backend"}</span><span>Quorum preview <span className="footer-dot">·</span> {apiMode === "mock" ? `${fixtures.length} scenarios` : `${packs.length} packs · ${models.length} models`}</span></footer>
+          </> : null}
+          <div style={{ display: page === "models" ? "contents" : "none" }}><ModelManagerPage models={models} packs={packs} apiMode={apiMode} onModelsChanged={() => setReloadKey((key) => key + 1)} onViewProfiles={() => setPage("profiles")} /></div>
+          <div style={{ display: page === "profiles" ? "contents" : "none" }}><ProfilesPage packs={packs} models={models} defaultPack={selectedPack} apiMode={apiMode} active={page === "profiles"} /></div>
         </div>
       </main>
     </div>
@@ -525,6 +530,137 @@ function stopDescription(reason: string) {
   if (reason === "stalemate") return "The panel stopped changing before reaching consensus.";
   if (reason === "budget") return "The run reached its configured resource budget.";
   return "The configured round limit was reached.";
+}
+
+function ModelManagerPage({ models, packs, apiMode, onModelsChanged, onViewProfiles }: { models: ModelInfo[]; packs: PackInfo[]; apiMode: "mock" | "live"; onModelsChanged: () => void; onViewProfiles: () => void }) {
+  const [provider, setProvider] = useState<ModelCreate["provider"]>("ollama");
+  const [tag, setTag] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [apiKeyEnv, setApiKeyEnv] = useState("");
+  const [family, setFamily] = useState("");
+  const [license, setLicense] = useState("");
+  const [openWeight, setOpenWeight] = useState(false);
+  const [locality, setLocality] = useState<"local" | "hosted">("local");
+  const [calibrate, setCalibrate] = useState(true);
+  const [selectedPacks, setSelectedPacks] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [job, setJob] = useState<{ id: string; done: number; total: number; status: "running" | "done" | "error"; message: string } | null>(null);
+  const stopJob = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => stopJob.current?.(), []);
+  const usingHostedProvider = provider === "digitalocean" || locality === "hosted";
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (apiMode !== "live" || busy || !tag.trim()) return;
+    setBusy(true); setError(""); setMessage(""); setJob(null);
+    try {
+      const payload: ModelCreate = {
+        provider,
+        tag: tag.trim(),
+        ...(provider === "openai_compat" && baseUrl.trim() ? { base_url: baseUrl.trim() } : {}),
+        ...(apiKeyEnv.trim() ? { api_key_env: apiKeyEnv.trim() } : {}),
+        ...(family.trim() ? { family: family.trim() } : {}),
+        ...(license.trim() ? { license: license.trim() } : {}),
+        open_weight: openWeight,
+        ...(provider !== "ollama" ? { locality: provider === "digitalocean" ? "hosted" : locality } : {}),
+        calibrate,
+        ...(calibrate && selectedPacks.length ? { packs: selectedPacks } : {}),
+      };
+      const created = await addModel(payload);
+      setTag("");
+      onModelsChanged();
+      if (!created.job_id) {
+        setMessage(`${created.model.tag} was registered. Calibration was not started.`);
+        setBusy(false);
+        return;
+      }
+      setJob({ id: created.job_id, done: 0, total: 0, status: "running", message: "Calibration queued" });
+      stopJob.current?.();
+      stopJob.current = subscribeToJob(created.job_id, (event) => {
+        const data = asRecord(event.data);
+        if (event.event === "job_progress") {
+          setJob((current) => current ? { ...current, done: Number(data.done ?? 0), total: Number(data.total ?? 0), message: String(data.message ?? "Calibrating…") } : current);
+        } else if (event.event === "job_done") {
+          setJob((current) => current ? { ...current, status: "done", message: "Calibration finished. The model profile is available." } : current);
+          setMessage(`${created.model.tag} was registered and calibration finished.`);
+          setBusy(false); onModelsChanged();
+        } else if (event.event === "job_error") {
+          const detail = String(data.message ?? "Calibration failed.");
+          setJob((current) => current ? { ...current, status: "error", message: detail } : current);
+          setError(`The model was registered, but calibration failed: ${detail}`);
+          setBusy(false); onModelsChanged();
+        }
+      }, (caught) => {
+        setError(caught.message); setBusy(false); onModelsChanged();
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to register this model.");
+      setBusy(false);
+    }
+  }
+
+  return <>
+    <section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-line" />MODEL REGISTRY</div><h1>Model manager</h1><p>Register providers, review locality and license metadata, and calibrate models against a pack.</p></div><div className="heading-meta"><span className="meta-icon"><UsersRound size={15} /></span><span><strong>{models.length} registered</strong><small>Configured by this backend</small></span></div></section>
+    {apiMode !== "live" && <div className="event-note event-warning">Model registration requires live mode. Start the backend and launch Vite with <code>VITE_API=live</code>.</div>}
+    {error && <div className="error-banner page-error"><TriangleAlert size={16} /><span><strong>Model setup needs attention</strong><small>{error}</small></span></div>}
+    {message && !error && <div className="event-note"><strong>Model setup updated</strong><p>{message}</p></div>}
+    {job && <section className="panel job-panel"><div className="job-panel-header"><strong>Calibration · {job.id}</strong><span className={`job-status ${job.status}`}>{job.status}</span></div><p>{job.message}</p>{job.status === "running" && <><div className="job-progress-track"><i style={{ width: `${job.total ? Math.min(100, job.done / job.total * 100) : 5}%` }} /></div><small>{job.total ? `${job.done} / ${job.total} items` : "Waiting for calibration work"}</small></>}{job.status === "done" && <button className="text-button" onClick={onViewProfiles}>View skill profile <ArrowRight size={13} /></button>}</section>}
+    <div className="manager-grid">
+      <section className="panel manager-form-panel"><div className="panel-heading"><div className="panel-title"><span className="panel-icon purple"><UsersRound size={15} /></span><span><strong>Add a model</strong><small>Credentials stay in the backend environment</small></span></div></div>
+        <form className="manager-form" onSubmit={(event) => { void submit(event); }}>
+          <label className="setup-field"><span>Provider</span><select value={provider} onChange={(event) => { const next = event.target.value as ModelCreate["provider"]; setProvider(next); setLocality(next === "ollama" ? "local" : "hosted"); setOpenWeight(next === "ollama"); setApiKeyEnv(next === "digitalocean" ? "DIGITALOCEAN_MODEL_ACCESS_KEY" : ""); }}><option value="ollama">Ollama</option><option value="openai_compat">OpenAI-compatible API</option><option value="digitalocean">DigitalOcean inference</option></select></label>
+          <label className="setup-field"><span>Model tag or deployment ID</span><input required maxLength={200} value={tag} onChange={(event) => setTag(event.target.value)} placeholder={provider === "ollama" ? "qwen2.5:14b" : "model-name"} /></label>
+          {provider === "openai_compat" && <label className="setup-field"><span>Base URL</span><input required type="url" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="http://127.0.0.1:1234/v1" /></label>}
+          {provider !== "ollama" && <label className="setup-field"><span>API key environment variable <small>{provider === "digitalocean" ? "required in backend environment" : "optional"}</small></span><input required={provider === "digitalocean"} pattern="[A-Za-z_][A-Za-z0-9_]*" value={apiKeyEnv} onChange={(event) => setApiKeyEnv(event.target.value)} placeholder={provider === "digitalocean" ? "DIGITALOCEAN_MODEL_ACCESS_KEY" : "MODEL_API_KEY"} /><small className="field-help">Enter the environment variable name only. Never paste the key. Set its value in the backend process environment first.</small></label>}
+          <div className="manager-form-row"><label className="setup-field"><span>Model family <small>optional</small></span><input value={family} onChange={(event) => setFamily(event.target.value)} placeholder="Qwen 2.5" /></label><label className="setup-field"><span>License <small>optional</small></span><input value={license} onChange={(event) => setLicense(event.target.value)} placeholder="Apache-2.0" /></label></div>
+          <div className="manager-form-row">{provider !== "ollama" ? <label className="setup-field"><span>Locality</span><select value={provider === "digitalocean" ? "hosted" : locality} disabled={provider === "digitalocean"} onChange={(event) => setLocality(event.target.value as "local" | "hosted")}><option value="local">Local</option><option value="hosted">Hosted</option></select></label> : <div className="field-help locality-help">Ollama locality is inferred from the backend’s configured Ollama URL.</div>}<label className="check-field"><input type="checkbox" checked={openWeight} onChange={(event) => setOpenWeight(event.target.checked)} /><span>Open-weight model</span></label></div><small className="field-help">For API providers, mark open-weight only after checking the model’s license and weight availability.</small>
+          <label className="check-field"><input type="checkbox" checked={calibrate} onChange={(event) => setCalibrate(event.target.checked)} /><span>Calibrate after registration</span></label>
+          {calibrate && <label className="setup-field"><span>Calibration packs <small>choose none to use all</small></span><select multiple value={selectedPacks} onChange={(event) => setSelectedPacks(Array.from(event.currentTarget.selectedOptions, (option) => option.value))}>{packs.map((pack) => <option key={pack.id} value={pack.id}>{pack.name} · {pack.corpus_counts?.calibration ?? "?"} examples</option>)}</select></label>}
+          {usingHostedProvider && <div className="hosted-note"><ShieldAlert size={14} /><span>This provider is hosted. Review inputs sent to this model leave this machine.</span></div>}
+          <button className="primary-button manager-submit" type="submit" disabled={apiMode !== "live" || busy || !tag.trim()}>{busy ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />}{busy ? "Registering / calibrating…" : "Register model"}</button>
+        </form>
+      </section>
+      <section className="panel registry-panel"><div className="panel-heading"><div className="panel-title"><span className="panel-icon"><Layers3 size={15} /></span><span><strong>Registered models</strong><small>Provider, locality, license, and registry state</small></span></div><button className="icon-button" aria-label="Refresh model registry" title="Refresh models" onClick={onModelsChanged}><RefreshCw size={14} /></button></div>
+        <div className="registry-list">{models.length ? models.map((model) => <div className="registry-row" key={model.id}><div className="registry-model"><strong>{model.tag || model.id}</strong><small>{model.family || model.provider} · {model.provider} · {model.license || "license unknown"}</small>{model.status_detail && <small className="model-detail">{model.status_detail}</small>}</div><div className="registry-badges"><span className={`locality-tag ${model.locality}`}>{model.locality}</span><span className={`job-status ${model.status}`}>{model.status}</span><span className={`model-state ${model.open_weight ? "ready" : "closed"}`}>{model.open_weight ? "OPEN WEIGHT" : "CLOSED WEIGHT"}</span></div></div>) : <div className="model-empty">No models are registered yet.</div>}</div>
+      </section>
+    </div>
+  </>;
+}
+
+function ProfilesPage({ packs, models, defaultPack, apiMode, active }: { packs: PackInfo[]; models: ModelInfo[]; defaultPack: string; apiMode: "mock" | "live"; active: boolean }) {
+  const [packId, setPackId] = useState(defaultPack);
+  const [response, setResponse] = useState<ProfilesResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const pack = packs.find((item) => item.id === packId);
+  useEffect(() => { if (defaultPack && !packs.some((item) => item.id === packId)) setPackId(defaultPack); }, [defaultPack, packId, packs]);
+  useEffect(() => {
+    let active = true;
+    if (!active || apiMode !== "live" || !packId) { if (apiMode !== "live") setResponse(null); return () => { active = false; }; }
+    setLoading(true); setError("");
+    void getProfiles(packId).then((data) => { if (active) setResponse(data); }).catch((caught: unknown) => { if (active) setError(caught instanceof Error ? caught.message : "Unable to load model profiles."); }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [active, apiMode, packId, refreshKey]);
+  const modelIds = [...new Set([...models.map((model) => model.id), ...Object.keys(response?.profiles ?? {})])];
+  return <>
+    <section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-line" />CALIBRATED SKILL</div><h1>Skill profiles</h1><p>Calibration accuracy and conservative vote weights, broken out by model and issue category.</p></div><label className="profile-pack-select"><span>Pack</span><select value={packId} onChange={(event) => setPackId(event.target.value)} disabled={!packs.length}>{packs.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></section>
+    {apiMode !== "live" && <div className="event-note event-warning">Skill profiles require live mode and stored calibration results. Start the backend and launch Vite with <code>VITE_API=live</code>.</div>}
+    {error && <div className="error-banner page-error"><TriangleAlert size={16} /><span><strong>Profiles unavailable</strong><small>{error}</small></span></div>}
+    <section className="panel profiles-panel"><div className="panel-heading"><div className="panel-title"><span className="panel-icon green"><Gauge size={15} /></span><span><strong>{pack?.name ?? packId ?? "Model profiles"}</strong><small>{pack?.categories.length ?? 0} categories · default weight {response ? fmt(response.default_weight) : "—"}</small></span></div><button className="icon-button" aria-label="Reload profiles" title="Reload profiles" onClick={() => setRefreshKey((key) => key + 1)}><RefreshCw size={14} /></button></div>
+      {loading ? <div className="model-empty"><LoaderCircle className="spin" size={15} />Loading calibration profiles…</div> : !pack?.categories.length ? <div className="model-empty">Select a pack to see its calibrated categories.</div> : <div className="profile-table-wrap"><table className="profile-table"><thead><tr><th>Model</th>{pack.categories.map((category) => <th key={category} title={pack.category_descriptions?.[category]}>{category.replaceAll("_", " ")}</th>)}</tr></thead><tbody>{modelIds.map((modelId) => { const model = models.find((item) => item.id === modelId); const cells = response?.profiles[modelId]?.[packId] ?? {}; return <tr key={modelId}><th><strong>{model?.tag || modelId}</strong><small>{model?.family || model?.provider || "Stored profile"} · {model?.locality ?? "unknown locality"}</small></th>{pack.categories.map((category) => <ProfileTableCell key={category} cell={cells[category]} defaultWeight={response?.default_weight ?? 0} />)}</tr>; })}</tbody></table>{!loading && modelIds.length === 0 && <div className="model-empty">No calibration data for this pack yet. Register a model and run calibration in Model Manager.</div>}</div>}
+    </section>
+    <div className="profile-explainer"><ShieldCheck size={14} /><span><strong>How to read this:</strong> n is the number of calibration examples; rate is the observed correctness; the interval shown is the Wilson 95% lower bound used as the conservative weight. Small synthetic samples can produce unstable weights.</span></div>
+  </>;
+}
+
+function ProfileTableCell({ cell, defaultWeight }: { cell?: ProfileCell; defaultWeight: number }) {
+  if (!cell) return <td className="profile-cell profile-empty"><strong>{fmt(defaultWeight)}</strong><small>n 0 · default</small></td>;
+  const hue = Math.round(cell.weight * 112);
+  return <td className="profile-cell" style={{ backgroundColor: `hsl(${hue} 34% 95%)` }} title={`Weight ${fmt(cell.weight)} · observed rate ${fmt(cell.rate)} · Wilson 95% lower bound ${fmt(cell.lower)} · ${cell.correct}/${cell.n} correct`}><strong>{fmt(cell.weight)}</strong><small>n {cell.n} · rate {fmt(cell.rate)}</small><small>95% LB {fmt(cell.lower)}</small></td>;
 }
 
 export default App;

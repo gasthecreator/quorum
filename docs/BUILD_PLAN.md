@@ -134,11 +134,12 @@ Build against the mock server first, then switch to live.
 
 ## Implementation status — 2026-10-30
 
-The `frontend/codex` branch implements the F0–F3 review-room path against contract v1.1.0: the Vite
-fixture replay, live pack/model loading, pasted or uploaded input, model/panel/round configuration,
-streamed review and ruling, plus framing, escalation, critique, locality and export affordances. P1
-adds a deterministic mutation generator and separate calibration/held-out corpora with clean controls.
-The Model Manager, profiles, evaluation page, claim-check pack, and demo materials remain pending.
+The merged review-room work implements F0–F3 against contract v1.1.0: Vite fixture replay, live
+pack/model loading, pasted or uploaded input, panel/round configuration, streamed review and ruling,
+framing, escalation, critique, locality and exports. The current `frontend/model-manager-profiles`
+branch adds F4/F5: profiles from `GET /profiles` and model registration with streamed calibration
+progress. P1 adds a deterministic mutation generator and separate calibration/held-out corpora with
+clean controls. Evaluation, the claim-check pack, and demo materials remain pending.
 
 The local clone includes the merged v1.1 backend and contract. This branch does not change
 `backend/` or `contracts/`. A real inference run still depends on a configured and reachable model

@@ -27,6 +27,12 @@ Live mode loads contract v1.1 packs and model metadata, accepts pasted or upload
 the selected pack, open-weight panel, judge, round cap, framing, and escalation policy to `POST /runs`.
 Hosted model selections are labeled and trigger a notice that the review input goes to that provider.
 
+The Model Manager registers an installed Ollama tag, an OpenAI-compatible endpoint, or a
+DigitalOcean inference deployment. It can start calibration against selected packs and streams job
+progress. For API keys, enter an environment-variable name in the UI and set that variable in the
+backend process environment; the key itself is never sent by the browser. The Skill Profiles page
+shows observed calibration rate, sample count, and the Wilson 95% lower bound used as the vote weight.
+
 The generated code-review corpus is in `packs/code-review/`: 12 calibration and 14 held-out synthetic
 examples. It is an integration seed, far too small to support stable model rankings or security claims.
 
