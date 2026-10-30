@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel
 
 from . import prompts
-from .cluster import build_tally, finding_match, group_findings, spans_overlap
+from .cluster import build_tally, group_findings, spans_overlap
 from .config import Settings
 from .grounding import Grounder, default_grounder, timed_check
 from .packs import PackStore
@@ -230,11 +230,13 @@ class Debate:
         return State(out.model_copy(update={"position": pos, "findings": drafts}), findings)
 
     def _differs(self, a: State, b: State) -> bool:
+        """Did a model's answer change? Compared the way clusters are formed, so adding a finding of
+        another category on the same lines counts (it used to slip past the evidence requirement)."""
         if a.out.position.verdict != b.out.position.verdict:
             return True
-        tol = self.settings.line_tolerance
-        return any(not any(finding_match(x, y, tol) for y in b.findings) for x in a.findings) or \
-            any(not any(finding_match(y, x, tol) for x in a.findings) for y in b.findings)
+        groups = group_findings({"a": a.findings, "b": b.findings}, self.settings.line_tolerance,
+                                self.settings.cluster_by_category)
+        return any(len(g.members) < 2 for g in groups)
 
     # ------------------------------------------------------------------ agreement
 
