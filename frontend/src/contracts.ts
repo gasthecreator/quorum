@@ -41,9 +41,41 @@ export type PackInfo = {
 
 export type ProfileCell = { n: number; correct: number; rate: number; lower: number; weight: number };
 export type ProfilesResponse = {
-  pack: string;
   default_weight: number;
   profiles: Record<string, Record<string, Record<string, ProfileCell>>>;
+};
+
+export type ModelCreate = {
+  provider: "ollama" | "openai_compat" | "digitalocean";
+  tag: string;
+  base_url?: string | null;
+  api_key_env?: string | null;
+  family?: string | null;
+  license?: string | null;
+  open_weight?: boolean | null;
+  locality?: "local" | "hosted" | null;
+  calibrate?: boolean;
+  packs?: string[] | null;
+};
+export type ModelCreated = { model: ModelInfo; job_id?: string | null };
+export type JobProgress = { job_id: string; done: number; total: number; message: string };
+export type JobDone = { job_id: string; result: Record<string, unknown> };
+export type JobError = { job_id: string; code: string; message: string };
+export type JobCreated = { job_id: string };
+export type EvalRequest = { pack: string; model_ids: string[]; judge_model_id?: string | null; max_rounds?: number; limit?: number | null };
+export type EvalInterval = { value: number; lo: number; hi: number };
+export type EvalCondition = {
+  id: number; name: string; available: boolean; reason_unavailable: string; n_items: number;
+  tp: number; fp: number; tn: number; fn: number;
+  precision?: EvalInterval | null; recall?: EvalInterval | null; f1?: EvalInterval | null;
+  fpr?: EvalInterval | null; accuracy?: EvalInterval | null;
+};
+export type EvalResult = {
+  id: string; created_at: string; pack: string; model_ids: string[]; judge_model_id: string;
+  max_rounds: number; n_items: number; n_positive: number; n_negative: number;
+  conditions: EvalCondition[];
+  debate_movement: { toward_correct: number; toward_wrong: number; neutral: number; note: string };
+  notes: string[];
 };
 
 export type Health = {
