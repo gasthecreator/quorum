@@ -160,7 +160,7 @@ function App() {
             frame: frameEnabled,
             roles: reviewPack ? roleMode : "off",
             outsider: reviewPack && outsiderEnabled && selectedModels.length >= 3,
-            ground: reviewPack && groundEnabled,
+            ground: reviewPack && groundEnabled && groundingAvailable,
           } satisfies RunRequest);
       setRunState("running");
       closeStream.current = subscribeToRun(
@@ -189,11 +189,11 @@ function App() {
   const liveCanRun = Boolean(healthOk && selectedPack && inputText.trim() && inputText.length <= 60000 && selectedModels.length > 0 && !backendLoading);
 
   function toggleModel(modelId: string) {
-    setSelectedModels((current) => {
-      if (current.includes(modelId)) return current.filter((id) => id !== modelId);
-      if (current.length >= 6) return current;
-      return [...current, modelId];
-    });
+    const next = selectedModels.includes(modelId)
+      ? selectedModels.filter((id) => id !== modelId)
+      : selectedModels.length < 6 ? [...selectedModels, modelId] : selectedModels;
+    setSelectedModels(next);
+    if (next.length < 3) setOutsiderEnabled(false);
   }
 
   async function loadInputFile(file?: File) {
@@ -479,8 +479,8 @@ function LiveSetup({
       </div>
       {reviewPack && <div className="advanced-run-options" aria-label="Advanced review options">
         <label className="run-option"><input type="checkbox" checked={roleMode === "profile"} onChange={(event) => onRoleModeChange(event.target.checked ? "profile" : "off")} /><span><strong>Assign roles from profiles</strong><small>Give reviewers attacker, maintainer, or operator roles based on calibration results.</small></span></label>
-        <label className={`run-option ${selectedModels.length < 3 ? "run-option-disabled" : ""}`}><input type="checkbox" checked={outsiderEnabled} disabled={selectedModels.length < 3} onChange={(event) => onOutsiderChange(event.target.checked)} /><span><strong>Include a cold outsider</strong><small>With three or more models, the weakest specialist reviews the input alone in round 0.</small></span></label>
-        <label className={`run-option ${!groundingAvailable ? "run-option-disabled" : ""}`}><input type="checkbox" checked={groundEnabled} disabled={!groundingAvailable} onChange={(event) => onGroundChange(event.target.checked)} /><span><strong>Run Semgrep grounding</strong><small>{groundingAvailable ? "Static analysis can mark code findings as tool-confirmed." : "Semgrep is not available in the backend environment."}</small></span></label>
+        <label className={`run-option ${selectedModels.length < 3 ? "run-option-disabled" : ""}`}><input type="checkbox" checked={outsiderEnabled && selectedModels.length >= 3} disabled={selectedModels.length < 3} onChange={(event) => onOutsiderChange(event.target.checked)} /><span><strong>Include a cold outsider</strong><small>With three or more models, the weakest specialist reviews the input alone in round 0.</small></span></label>
+        <label className={`run-option ${!groundingAvailable ? "run-option-disabled" : ""}`}><input type="checkbox" checked={groundEnabled && groundingAvailable} disabled={!groundingAvailable} onChange={(event) => onGroundChange(event.target.checked)} /><span><strong>Run Semgrep grounding</strong><small>{groundingAvailable ? "Static analysis can mark code findings as tool-confirmed." : "Semgrep is not available in the backend environment."}</small></span></label>
       </div>}
       <div className="model-select-heading"><span>Review panel</span><small>Choose 1–6 registered models. Weights stay hidden from debaters.</small></div>
       {loading ? <div className="model-empty"><LoaderCircle className="spin" size={15} />Loading registered models…</div> : visibleModels.length === 0 ? <div className="model-empty"><UsersRound size={16} />No available models. Add one through the backend CLI, then refresh.</div> : (
@@ -771,7 +771,7 @@ function EvaluationPage({ packs, models, defaultPack, defaultModels, defaultJudg
       <form className="eval-config" onSubmit={(event) => { void startEvaluation(event); }}>
         <div className="eval-model-grid">{models.map((model) => <label className={`model-option ${modelIds.includes(model.id) ? "selected" : ""}`} key={model.id}><input type="checkbox" checked={modelIds.includes(model.id)} disabled={!modelIds.includes(model.id) && modelIds.length >= 6} onChange={() => toggleModel(model.id)} /><span className="model-check">{modelIds.includes(model.id) && <Check size={11} />}</span><span className="model-option-copy"><strong>{model.tag || model.id}</strong><small>{model.family} · {model.license || "license unknown"}</small></span><span className="locality-tag">{model.locality}</span></label>)}{models.length === 0 && <div className="model-empty">No available open-weight models. Register and calibrate a model in Model Manager first.</div>}</div>
         <div className="eval-options"><label className="setup-field"><span>Judge <small>optional</small></span><select value={judgeId} onChange={(event) => setJudgeId(event.target.value)}><option value="">Use backend default</option>{models.map((model) => <option key={model.id} value={model.id}>{model.tag || model.id}</option>)}</select></label><label className="setup-field"><span>Debate rounds</span><select value={maxRounds} onChange={(event) => setMaxRounds(Number(event.target.value))}><option value={0}>Blind only</option><option value={1}>1 round</option><option value={2}>2 rounds</option><option value={3}>3 rounds</option></select></label><label className="setup-field"><span>Held-out item limit <small>blank uses all</small></span><input type="number" min={1} max={pack?.corpus_counts?.heldout} value={limit} onChange={(event) => setLimit(event.target.value)} placeholder={String(pack?.corpus_counts?.heldout ?? "All items")} /></label></div>
-        <label className={`run-option eval-role-option ${!reviewPack ? "run-option-disabled" : ""}`}><input type="checkbox" checked={roleEvaluation} disabled={!reviewPack} onChange={(event) => setRoleEvaluation(event.target.checked)} /><span><strong>Include role ablation (condition 7)</strong><small>{reviewPack ? "Adds a full debate condition with profile-assigned roles; this makes the evaluation longer." : "Role evaluation is available for code-review packs only."}</small></span></label>
+        <label className={`run-option eval-role-option ${!reviewPack ? "run-option-disabled" : ""}`}><input type="checkbox" checked={roleEvaluation && reviewPack} disabled={!reviewPack} onChange={(event) => setRoleEvaluation(event.target.checked)} /><span><strong>Include role ablation (condition 7)</strong><small>{reviewPack ? "Adds a full debate condition with profile-assigned roles; this makes the evaluation longer." : "Role evaluation is available for code-review packs only."}</small></span></label>
         {selectedHosted.length > 0 && <div className="hosted-note"><ShieldAlert size={14} /><span>Hosted models selected: evaluation inputs will be sent to {selectedHosted.map((model) => model.tag || model.id).join(", ")} through their configured providers.</span></div>}
         <button className="primary-button manager-submit" type="submit" disabled={apiMode !== "live" || busy || modelIds.length === 0 || !packId}>{busy ? <LoaderCircle className="spin" size={14} /> : <Play size={13} fill="currentColor" />}{busy ? "Evaluation running…" : "Run held-out evaluation"}</button>
       </form>
