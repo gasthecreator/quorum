@@ -2,8 +2,9 @@
 
 This runbook is for a macOS Apple Silicon machine with 8 GB of memory. It uses the three small
 Ollama tags listed in the README, one model call at a time. They are candidates, not a validated
-quality or latency lineup. The local checkout used to prepare this runbook has no Ollama installation
-or downloaded models, so the live steps still need a real rehearsal.
+quality or latency lineup. The live steps still need a real rehearsal. Before starting, check that
+the Ollama service is reachable and that all three candidate tags appear in `ollama list`; this
+runbook does not assume that any candidate is already installed.
 
 ## 1. Install and pull the candidate models
 
@@ -61,11 +62,13 @@ for an independent source check.
 
 ## 4. Inspect evaluation output
 
-The **Evaluations** page runs the six backend conditions on the selected pack's held-out split and
-shows the confusion counts, metrics, and intervals. Running an evaluation makes model inference calls
-and may take a while. The current claim-check split contains only 20 claims; the code-review split has
-14 synthetic examples. Those sizes are too small for stable comparative claims. Do not present a
-leaderboard or security-performance conclusion from these corpora.
+The **Evaluations** page runs the six baseline backend conditions on the selected pack's held-out
+split and shows the confusion counts, metrics, and intervals. For code-review packs, enable the
+optional role-ablation condition to compare role-based debate with the baseline. Running an evaluation
+makes model inference calls and may take a while. The current claim-check split contains only 20
+claims; the code-review split has 14 synthetic examples. Those sizes are too small for stable
+comparative claims. Do not present a leaderboard or security-performance conclusion from these
+corpora.
 
 ## Limits to state during the demo
 

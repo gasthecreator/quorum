@@ -5,7 +5,7 @@ Python 3.11+, FastAPI, SQLite. Runs without the UI.
 ```bash
 cd backend
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/pytest -q                      # 85 tests, no model server needed
+.venv/bin/pytest -q                      # no model server needed
 .venv/bin/quorum serve                   # http://127.0.0.1:8787
 ```
 
@@ -115,14 +115,13 @@ Design decisions worth knowing:
   data, the input is scanned for steering phrases, and the judge is warned when any are found.
   Detection is a heuristic; the real defence is the anonymous weighted vote.
 - **Evaluation honesty.** Weights come from the calibration split only, the evaluation refuses a
-  held-out split that shares an id or identical input with calibration, condition 6 (tools) reports
-  as unavailable until B10 exists, and every proportion has a 95% interval.
+  held-out split that shares an id or identical input with calibration, condition 6 (tools) is marked
+  unavailable when the Semgrep grounder is unavailable or the pack is not a review pack, and every
+  proportion has a 95% interval.
 
 ## Not done yet
 
-- **Real-model validation.** Ollama is not installed on this machine, so the adapters are tested
-  against an HTTP stand-in (`tests/fake_ollama.py`) and with mocked responses, never against a real
-  model. First real run will need prompt tuning for small models.
-- **B17 MCP wrapper** (stretch) is not started.
-- **B10** is Semgrep-only; running the code's tests is not built, and the rules cover the four dev-pack bug types.
-- The model lineup, parallelism and judge model wait on hardware (8 GB M2).
+- **Real-model validation.** The adapters are tested against an HTTP stand-in (`tests/fake_ollama.py`)
+  and with mocked responses; prompt quality and end-to-end behavior with a real multi-model panel
+  still need validation. First real run will likely need prompt tuning for small models.
+- The candidate model lineup and judge remain unvalidated on the target hardware (assumed 8 GB M2).

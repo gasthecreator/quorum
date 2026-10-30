@@ -1,3 +1,5 @@
+import type { RoleAssignment, RoleName } from "./contracts";
+
 export type EventEnvelope<T = Record<string, unknown>> = {
   seq: number;
   event: string;
@@ -27,6 +29,7 @@ export type ModelMessage = {
   changed_reason: string;
   text: string;
   critique?: { strongest: string; biggest_blind_spot: string; missed_by_all: string } | null;
+  role?: RoleName | null;
   error?: string | null;
 };
 
@@ -84,6 +87,16 @@ export type RunStarted = {
   input_flags?: string[];
   frame: boolean;
   escalate: "auto" | "always";
+  ground?: boolean;
+  roles?: Record<string, RoleAssignment>;
+};
+
+export type Grounded = {
+  tool: string;
+  available: boolean;
+  findings: Array<{ category: string; file: string; line_start: number; line_end: number; severity: string; claim: string; rule_id: string }>;
+  error?: string | null;
+  duration_ms: number;
 };
 
 export type Framed = { model_id: string; restatement: string; error?: string | null; input_flags?: string[] };
@@ -95,7 +108,9 @@ export type JudgeRuling = {
   overrides_vote: boolean;
   reason: string;
   injection_flags: string[];
+  error?: string | null;
   skipped?: boolean;
+  recommendation?: string;
 };
 
 export type FinalResult = {

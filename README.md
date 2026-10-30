@@ -23,17 +23,21 @@ npm run dev
 
 Open `http://127.0.0.1:5173`. Fixture replay is the default (`VITE_API=mock`). To use the live API,
 start `quorum serve` from `backend/` in a second terminal and run `VITE_API=live npm run dev`.
-Live mode loads contract v1.1 packs and model metadata, accepts pasted or uploaded text, and submits
+Live mode loads pack and model metadata, accepts pasted or uploaded text, and submits
 the selected pack, open-weight panel, judge, round cap, framing, and escalation policy to `POST /runs`.
 Hosted model selections are labeled and trigger a notice that the review input goes to that provider.
+For code-review packs, live mode can also assign roles from calibration profiles, include a cold
+outsider, and run Semgrep grounding when the backend reports Semgrep available. Evaluations can add
+the role ablation as condition 7.
 
 The Model Manager registers an installed Ollama tag, an OpenAI-compatible endpoint, or a
 DigitalOcean inference deployment. It can start calibration against selected packs and streams job
 progress. For API keys, enter an environment-variable name in the UI and set that variable in the
 backend process environment; the key itself is never sent by the browser. The Skill Profiles page
 shows observed calibration rate, sample count, and the Wilson 95% lower bound used as the vote weight.
-The Evaluations page compares the backend’s six held-out conditions and shows the metric intervals;
-evaluation runs make inference calls to the selected providers.
+The Evaluations page compares the backend’s six baseline conditions and can include a seventh
+role-ablation condition; it shows metric intervals, and evaluation runs make inference calls to the
+selected providers.
 
 The generated code-review corpus is in `packs/code-review/`: 12 calibration and 14 held-out synthetic
 examples. It is an integration seed, far too small to support stable model rankings or security claims.

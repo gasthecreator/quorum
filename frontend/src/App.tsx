@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { addModel, downloadRunExport, getHealth, getLatestEval, getModels, getPacks, getProfiles, loadFixtures, startEval, startFixtureRun, startLiveRun, subscribeToJob, subscribeToRun } from "./api";
 import type { EvalCondition, EvalInterval, EvalRequest, EvalResult, ModelCreate, ModelInfo, PackInfo, ProfileCell, ProfilesResponse, RunRequest } from "./contracts";
-import type { Cluster, EventEnvelope, Fixture, FinalResult, JudgeRuling, ModelMessage, RunStarted } from "./types";
+import type { Cluster, EventEnvelope, Fixture, FinalResult, Grounded, JudgeRuling, ModelMessage, RunStarted } from "./types";
 
 type RoundFinished = { round: number; agreement: number };
 type Stopped = { reason: "consensus" | "stalemate" | "max_rounds" | "budget"; round?: number };
@@ -34,6 +34,11 @@ function App() {
   const [maxRounds, setMaxRounds] = useState(2);
   const [escalate, setEscalate] = useState<"always" | "auto">("always");
   const [frameEnabled, setFrameEnabled] = useState(true);
+  const [roleMode, setRoleMode] = useState<"off" | "profile">("off");
+  const [outsiderEnabled, setOutsiderEnabled] = useState(false);
+  const [groundEnabled, setGroundEnabled] = useState(false);
+  const [groundingAvailable, setGroundingAvailable] = useState(false);
+  const [contractVersion, setContractVersion] = useState("1.3.0");
   const [fileName, setFileName] = useState("");
   const [events, setEvents] = useState<EventEnvelope[]>([]);
   const [runState, setRunState] = useState<"idle" | "loading" | "running" | "done" | "error">("idle");
@@ -69,6 +74,8 @@ function App() {
         const [health, packItems, modelItems] = await Promise.all([getHealth(), getPacks(), getModels()]);
         if (!active) return;
         setHealthOk(health.ok);
+        setGroundingAvailable(Boolean(health.grounding?.semgrep));
+        setContractVersion(health.contract_version);
         setPacks(packItems);
         setModels(modelItems);
         const nextPack = packItems.find((item) => item.id === selectedPack) ?? packItems[0];
@@ -94,6 +101,7 @@ function App() {
 
   const fixture = fixtures.find((item) => item.file === selectedFile) ?? fixtures[0];
   const selectedPackInfo = packs.find((item) => item.id === selectedPack);
+  const reviewPack = selectedPackInfo?.modes.includes("review") ?? false;
   const availableModels = models.filter((item) => item.open_weight && ["ready", "registered"].includes(item.status));
   const selectedHostedModels = models.filter((item) => selectedModels.includes(item.id) && item.locality === "hosted");
   const started = events.find((event) => event.event === "run_started")?.data as RunStarted | undefined;
@@ -103,6 +111,7 @@ function App() {
   const framed = events.find((event) => event.event === "framed")?.data as { restatement?: string; error?: string | null } | undefined;
   const escalation = events.find((event) => event.event === "escalated")?.data as { reason?: string; detail?: string } | undefined;
   const earlyFinish = events.find((event) => event.event === "finished_early")?.data as { calls_saved?: number; reason?: string } | undefined;
+  const grounded = events.find((event) => event.event === "grounded")?.data as Grounded | undefined;
   const rounds = useMemo(() => {
     const byRound = new Map<number, { messages: ModelMessage[]; agreement?: number; finished: boolean }>();
     for (const event of events) {
@@ -149,6 +158,9 @@ function App() {
             category: selectedCategory || null,
             escalate,
             frame: frameEnabled,
+            roles: reviewPack ? roleMode : "off",
+            outsider: reviewPack && outsiderEnabled && selectedModels.length >= 3,
+            ground: reviewPack && groundEnabled,
           } satisfies RunRequest);
       setRunState("running");
       closeStream.current = subscribeToRun(
@@ -240,7 +252,7 @@ function App() {
           <div className="breadcrumbs"><span>Workspace</span><ArrowRight size={13} /><strong>{page === "review" ? "Review room" : page === "profiles" ? "Skill profiles" : page === "eval" ? "Evaluations" : "Model manager"}</strong></div>
           <div className="topbar-actions">
             <span className={`connection-pill ${apiMode === "live" && !healthOk ? "connection-offline" : ""}`}><span className="status-dot" />{apiMode === "mock" ? "Fixture mode" : backendLoading ? "Connecting to API" : healthOk ? "Live API connected" : "Live API unavailable"}</span>
-            <span className="version-label">Contract 1.1.0</span>
+            <span className="version-label">Contract {contractVersion}</span>
             {apiMode === "live" && <button className="icon-button" aria-label="Reconnect to API" title="Reload models and packs" onClick={() => setReloadKey((key) => key + 1)}><RefreshCw size={15} /></button>}
             <button className="icon-button" aria-label="Help"><CircleHelp size={17} /></button>
           </div>
@@ -295,6 +307,10 @@ function App() {
             maxRounds={maxRounds}
             escalate={escalate}
             frameEnabled={frameEnabled}
+            roleMode={roleMode}
+            outsiderEnabled={outsiderEnabled}
+            groundEnabled={groundEnabled}
+            groundingAvailable={groundingAvailable}
             loading={backendLoading}
             onPackChange={(id) => { setSelectedPack(id); setSelectedCategory(""); }}
             onCategoryChange={setSelectedCategory}
@@ -303,6 +319,9 @@ function App() {
             onRoundsChange={setMaxRounds}
             onEscalateChange={(value) => { setEscalate(value); setFrameEnabled(value === "always"); }}
             onFrameChange={setFrameEnabled}
+            onRoleModeChange={setRoleMode}
+            onOutsiderChange={setOutsiderEnabled}
+            onGroundChange={setGroundEnabled}
           />}
 
           {error && <div className="error-banner page-error"><TriangleAlert size={17} /><span><strong>{apiMode === "live" && !healthOk ? "Local API unavailable" : "Review setup needs attention"}</strong><small>{error}</small></span><button className="icon-button" aria-label="Dismiss error" onClick={() => setError("")}><X size={15} /></button></div>}
@@ -332,6 +351,7 @@ function App() {
               {framed?.restatement && <div className="event-note"><strong>Neutral framing</strong><p>{framed.restatement}</p></div>}
               {framed?.error && <div className="event-note event-warning">Framing failed; reviewers received the original input. {framed.error}</div>}
               {escalation && <div className="event-note"><strong>Panel escalated · {escalation.reason?.replaceAll("_", " ")}</strong><p>{escalation.detail}</p></div>}
+              {grounded && <div className={`event-note ${!grounded.available || grounded.error ? "event-warning" : ""}`}><strong>{grounded.tool} grounding · {grounded.available && !grounded.error ? `${grounded.findings.length} finding(s) in ${grounded.duration_ms} ms` : "unavailable"}</strong><p>{grounded.error || (!grounded.available ? "The backend could not run the configured static analyzer." : grounded.findings.length ? grounded.findings.map((finding) => `L${finding.line_start} ${finding.claim}`).join(" · ") : "No tool findings returned.")}</p></div>}
               {earlyFinish && <div className="event-note"><strong>Finished early</strong><p>{earlyFinish.reason} {earlyFinish.calls_saved ? `At least ${earlyFinish.calls_saved} model calls saved.` : ""}</p></div>}
 
               {events.length === 0 && runState !== "error" ? (
@@ -388,7 +408,7 @@ function App() {
               <section className="panel panelist-panel">
                 <div className="panel-heading compact-heading"><div className="panel-title"><span className="panel-icon purple"><UsersRound size={15} /></span><span><strong>Review panel</strong><small>{started ? `${started.model_ids.length} models · aliases hide identity` : "Anonymized during debate"}</small></span></div><span className="blind-chip"><ShieldCheck size={12} />Blind</span></div>
                 <div className="panelist-list">
-                  {panelists(started).map((model) => <div className="panelist-row" key={model.id}><span className={`alias-avatar alias-${model.alias.toLowerCase()}`}>{model.alias}</span><span className="panelist-name"><strong>{model.id}</strong><small>{model.id === started?.judge_model_id ? "Also serving as judge" : "Debater · identity hidden"}</small></span><span className={`model-live ${running ? "is-running" : ""}`} />{started?.judge_model_id === model.id && <span className="judge-mini">JUDGE</span>}</div>)}
+                {panelists(started).map((model) => <div className="panelist-row" key={model.id}><span className={`alias-avatar alias-${model.alias.toLowerCase()}`}>{model.alias}</span><span className="panelist-name"><strong>{model.id}</strong><small>{model.assignment ? `${model.assignment.role} role · ${model.assignment.source}` : model.id === started?.judge_model_id ? "Also serving as judge" : "Debater · identity hidden"}</small></span><span className={`model-live ${running ? "is-running" : ""}`} />{started?.judge_model_id === model.id && <span className="judge-mini">JUDGE</span>}</div>)}
                   {!started && <div className="panelist-placeholder"><span className="alias-avatar alias-a">A</span><span className="alias-avatar alias-b">B</span><span className="alias-avatar alias-c">C</span><span>Aliases stay hidden from the panelists</span></div>}
                 </div>
               </section>
@@ -419,6 +439,10 @@ type LiveSetupProps = {
   maxRounds: number;
   escalate: "always" | "auto";
   frameEnabled: boolean;
+  roleMode: "off" | "profile";
+  outsiderEnabled: boolean;
+  groundEnabled: boolean;
+  groundingAvailable: boolean;
   loading: boolean;
   onPackChange: (id: string) => void;
   onCategoryChange: (category: string) => void;
@@ -427,13 +451,19 @@ type LiveSetupProps = {
   onRoundsChange: (rounds: number) => void;
   onEscalateChange: (value: "always" | "auto") => void;
   onFrameChange: (enabled: boolean) => void;
+  onRoleModeChange: (mode: "off" | "profile") => void;
+  onOutsiderChange: (enabled: boolean) => void;
+  onGroundChange: (enabled: boolean) => void;
 };
 
 function LiveSetup({
   packs, models, availableModels, selectedPack, selectedCategory, selectedModels, judgeModelId,
-  maxRounds, escalate, frameEnabled, loading, onPackChange, onCategoryChange, onToggleModel, onJudgeChange, onRoundsChange, onEscalateChange, onFrameChange,
+  maxRounds, escalate, frameEnabled, roleMode, outsiderEnabled, groundEnabled, groundingAvailable,
+  loading, onPackChange, onCategoryChange, onToggleModel, onJudgeChange, onRoundsChange,
+  onEscalateChange, onFrameChange, onRoleModeChange, onOutsiderChange, onGroundChange,
 }: LiveSetupProps) {
   const pack = packs.find((item) => item.id === selectedPack);
+  const reviewPack = pack?.modes.includes("review") ?? false;
   const visibleModels = models;
   const selectedFamilyCount = new Set(availableModels.filter((model) => selectedModels.includes(model.id)).map((model) => model.family || model.id)).size;
   return (
@@ -447,6 +477,11 @@ function LiveSetup({
         <label className="setup-field"><span>Escalation</span><select value={escalate} onChange={(event) => onEscalateChange(event.target.value as "always" | "auto")}><option value="always">Full debate</option><option value="auto">Escalate on disagreement</option></select></label>
         <label className="setup-field"><span>Neutral framing</span><select value={String(frameEnabled)} onChange={(event) => onFrameChange(event.target.value === "true")}><option value="true">Enabled</option><option value="false">Disabled</option></select></label>
       </div>
+      {reviewPack && <div className="advanced-run-options" aria-label="Advanced review options">
+        <label className="run-option"><input type="checkbox" checked={roleMode === "profile"} onChange={(event) => onRoleModeChange(event.target.checked ? "profile" : "off")} /><span><strong>Assign roles from profiles</strong><small>Give reviewers attacker, maintainer, or operator roles based on calibration results.</small></span></label>
+        <label className={`run-option ${selectedModels.length < 3 ? "run-option-disabled" : ""}`}><input type="checkbox" checked={outsiderEnabled} disabled={selectedModels.length < 3} onChange={(event) => onOutsiderChange(event.target.checked)} /><span><strong>Include a cold outsider</strong><small>With three or more models, the weakest specialist reviews the input alone in round 0.</small></span></label>
+        <label className={`run-option ${!groundingAvailable ? "run-option-disabled" : ""}`}><input type="checkbox" checked={groundEnabled} disabled={!groundingAvailable} onChange={(event) => onGroundChange(event.target.checked)} /><span><strong>Run Semgrep grounding</strong><small>{groundingAvailable ? "Static analysis can mark code findings as tool-confirmed." : "Semgrep is not available in the backend environment."}</small></span></label>
+      </div>}
       <div className="model-select-heading"><span>Review panel</span><small>Choose 1–6 registered models. Weights stay hidden from debaters.</small></div>
       {loading ? <div className="model-empty"><LoaderCircle className="spin" size={15} />Loading registered models…</div> : visibleModels.length === 0 ? <div className="model-empty"><UsersRound size={16} />No available models. Add one through the backend CLI, then refresh.</div> : (
         <div className="model-grid">
@@ -502,7 +537,7 @@ function MessageCard({ message, aliases }: { message: ModelMessage; aliases: Rec
     <div className={`message-card ${failed ? "message-failed" : ""}`}>
       <span className={`alias-avatar alias-${alias.toLowerCase()}`}>{alias}</span>
       <div className="message-body">
-        <div className="message-meta"><strong>Reviewer {alias}</strong><span className="message-verdict">{message.position?.verdict?.replace("_", " ") ?? "unsure"}</span><span className="confidence">{fmt(message.position?.confidence ?? 0)} confidence</span>{message.changed && <span className="flip-badge"><ArrowDown size={11} />Changed</span>}</div>
+        <div className="message-meta"><strong>Reviewer {alias}</strong><span className="message-verdict">{message.position?.verdict?.replace("_", " ") ?? "unsure"}</span><span className="confidence">{fmt(message.position?.confidence ?? 0)} confidence</span>{message.role && <span className="role-chip">{message.role}</span>}{message.changed && <span className="flip-badge"><ArrowDown size={11} />Changed</span>}</div>
         <p>{failed ? message.error : message.text || (message.findings.length ? `${message.findings.length} finding(s) reported.` : "No issue found.")}</p>
         {message.changed && message.changed_reason && <div className="change-reason">Changed position: {message.changed_reason}</div>}
         {message.critique && (message.critique.strongest || message.critique.biggest_blind_spot || message.critique.missed_by_all) && <div className="critique-card"><strong>Peer critique</strong>{message.critique.strongest && <small><b>Strongest:</b> {message.critique.strongest}</small>}{message.critique.biggest_blind_spot && <small><b>Blind spot:</b> {message.critique.biggest_blind_spot}</small>}{message.critique.missed_by_all && <small><b>Missed by all:</b> {message.critique.missed_by_all}</small>}</div>}
@@ -519,7 +554,7 @@ function ClusterList({ title, clusters, tone }: { title: string; clusters: Clust
 
 function panelists(started?: RunStarted) {
   if (!started) return [];
-  return started.model_ids.map((id) => ({ id, alias: started.aliases[id] ?? "?" })).sort((a, b) => a.alias.localeCompare(b.alias));
+  return started.model_ids.map((id) => ({ id, alias: started.aliases[id] ?? "?", assignment: started.roles?.[id] })).sort((a, b) => a.alias.localeCompare(b.alias));
 }
 
 function scenarioName(file: string) {
@@ -670,6 +705,7 @@ function EvaluationPage({ packs, models, defaultPack, defaultModels, defaultJudg
   const [judgeId, setJudgeId] = useState(defaultJudge);
   const [maxRounds, setMaxRounds] = useState(defaultRounds);
   const [limit, setLimit] = useState("");
+  const [roleEvaluation, setRoleEvaluation] = useState(false);
   const [result, setResult] = useState<EvalResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -678,6 +714,7 @@ function EvaluationPage({ packs, models, defaultPack, defaultModels, defaultJudg
   const [refreshKey, setRefreshKey] = useState(0);
   const stopJob = useRef<(() => void) | null>(null);
   const pack = packs.find((item) => item.id === packId);
+  const reviewPack = pack?.modes.includes("review") ?? false;
   const selectedHosted = models.filter((model) => modelIds.includes(model.id) && model.locality === "hosted");
   useEffect(() => () => stopJob.current?.(), []);
   useEffect(() => { if (defaultPack && !packs.some((item) => item.id === packId)) setPackId(defaultPack); }, [defaultPack, packId, packs]);
@@ -703,7 +740,7 @@ function EvaluationPage({ packs, models, defaultPack, defaultModels, defaultJudg
     if (apiMode !== "live" || busy || !packId || modelIds.length === 0) return;
     setBusy(true); setError(""); setJob(null);
     try {
-      const payload: EvalRequest = { pack: packId, model_ids: modelIds, judge_model_id: judgeId || null, max_rounds: maxRounds, ...(limit ? { limit: Number(limit) } : {}) };
+      const payload: EvalRequest = { pack: packId, model_ids: modelIds, judge_model_id: judgeId || null, max_rounds: maxRounds, roles: roleEvaluation && reviewPack, ...(limit ? { limit: Number(limit) } : {}) };
       const jobId = await startEval(payload);
       setJob({ id: jobId, done: 0, total: 0, message: "Evaluation queued", status: "running" });
       stopJob.current?.();
@@ -727,13 +764,14 @@ function EvaluationPage({ packs, models, defaultPack, defaultModels, defaultJudg
   }
 
   return <>
-    <section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-line" />HELD-OUT EVALUATION</div><h1>Evaluations</h1><p>Compare six review conditions on the pack’s held-out examples. Starting a run makes inference calls.</p></div><label className="profile-pack-select"><span>Pack</span><select value={packId} onChange={(event) => setPackId(event.target.value)} disabled={!packs.length}>{packs.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.corpus_counts?.heldout ?? "?"} held-out</option>)}</select></label></section>
+    <section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-line" />HELD-OUT EVALUATION</div><h1>Evaluations</h1><p>Compare six baseline conditions and optionally the role ablation on held-out examples. Starting a run makes inference calls.</p></div><label className="profile-pack-select"><span>Pack</span><select value={packId} onChange={(event) => setPackId(event.target.value)} disabled={!packs.length}>{packs.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.corpus_counts?.heldout ?? "?"} held-out</option>)}</select></label></section>
     {apiMode !== "live" && <div className="event-note event-warning">Evaluation requires live mode and a configured model provider. Start the backend and launch Vite with <code>VITE_API=live</code>.</div>}
     {error && <div className="error-banner page-error"><TriangleAlert size={16} /><span><strong>Evaluation needs attention</strong><small>{error}</small></span></div>}
     <section className="panel eval-config-panel"><div className="panel-heading"><div className="panel-title"><span className="panel-icon purple"><Activity size={15} /></span><span><strong>Evaluation setup</strong><small>Pick the panel used across the baseline conditions</small></span></div><span className="selection-count">{modelIds.length} / 6 selected</span></div>
       <form className="eval-config" onSubmit={(event) => { void startEvaluation(event); }}>
         <div className="eval-model-grid">{models.map((model) => <label className={`model-option ${modelIds.includes(model.id) ? "selected" : ""}`} key={model.id}><input type="checkbox" checked={modelIds.includes(model.id)} disabled={!modelIds.includes(model.id) && modelIds.length >= 6} onChange={() => toggleModel(model.id)} /><span className="model-check">{modelIds.includes(model.id) && <Check size={11} />}</span><span className="model-option-copy"><strong>{model.tag || model.id}</strong><small>{model.family} · {model.license || "license unknown"}</small></span><span className="locality-tag">{model.locality}</span></label>)}{models.length === 0 && <div className="model-empty">No available open-weight models. Register and calibrate a model in Model Manager first.</div>}</div>
         <div className="eval-options"><label className="setup-field"><span>Judge <small>optional</small></span><select value={judgeId} onChange={(event) => setJudgeId(event.target.value)}><option value="">Use backend default</option>{models.map((model) => <option key={model.id} value={model.id}>{model.tag || model.id}</option>)}</select></label><label className="setup-field"><span>Debate rounds</span><select value={maxRounds} onChange={(event) => setMaxRounds(Number(event.target.value))}><option value={0}>Blind only</option><option value={1}>1 round</option><option value={2}>2 rounds</option><option value={3}>3 rounds</option></select></label><label className="setup-field"><span>Held-out item limit <small>blank uses all</small></span><input type="number" min={1} max={pack?.corpus_counts?.heldout} value={limit} onChange={(event) => setLimit(event.target.value)} placeholder={String(pack?.corpus_counts?.heldout ?? "All items")} /></label></div>
+        <label className={`run-option eval-role-option ${!reviewPack ? "run-option-disabled" : ""}`}><input type="checkbox" checked={roleEvaluation} disabled={!reviewPack} onChange={(event) => setRoleEvaluation(event.target.checked)} /><span><strong>Include role ablation (condition 7)</strong><small>{reviewPack ? "Adds a full debate condition with profile-assigned roles; this makes the evaluation longer." : "Role evaluation is available for code-review packs only."}</small></span></label>
         {selectedHosted.length > 0 && <div className="hosted-note"><ShieldAlert size={14} /><span>Hosted models selected: evaluation inputs will be sent to {selectedHosted.map((model) => model.tag || model.id).join(", ")} through their configured providers.</span></div>}
         <button className="primary-button manager-submit" type="submit" disabled={apiMode !== "live" || busy || modelIds.length === 0 || !packId}>{busy ? <LoaderCircle className="spin" size={14} /> : <Play size={13} fill="currentColor" />}{busy ? "Evaluation running…" : "Run held-out evaluation"}</button>
       </form>
