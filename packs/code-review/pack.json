@@ -1,0 +1,26 @@
+{
+  "id": "code-review",
+  "name": "Code review",
+  "description": "Deterministic mutation-seeded Python snippets for calibrating and evaluating code-review models.",
+  "categories": [
+    "sql_injection",
+    "off_by_one",
+    "missing_await",
+    "unbounded_query",
+    "missing_authorization",
+    "path_traversal"
+  ],
+  "category_descriptions": {
+    "sql_injection": "Untrusted input is concatenated into SQL instead of passed as a bound parameter.",
+    "off_by_one": "A loop or slice starts or stops one element away from the intended boundary.",
+    "missing_await": "An asynchronous operation is called without awaiting its result.",
+    "unbounded_query": "A query materializes every matching row instead of respecting a result limit.",
+    "missing_authorization": "A sensitive operation returns or updates a record without checking the caller's permission.",
+    "path_traversal": "A caller-controlled path component reaches a filesystem operation without normalization."
+  },
+  "modes": ["review"],
+  "corpus": {
+    "calibration": "calibration.jsonl",
+    "heldout": "heldout.jsonl"
+  }
+}

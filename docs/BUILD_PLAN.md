@@ -32,12 +32,13 @@ The two workstreams meet only at the HTTP and SSE contract below. It lives in `c
 | --- | --- |
 | GET /health | Backend and Ollama status |
 | GET /packs | Available packs and their categories |
-| GET /models | Registered models: id, provider, tag, family, license, open\_weight, status |
+| GET /models | Registered models: id, provider, tag, family, license, open\_weight, locality, status |
 | POST /models | Add a model (Ollama tag or OpenAI-compatible URL); starts a calibration job |
 | GET /profiles | Skill profile per model per category |
-| POST /runs | Start a debate: pack, input, model\_ids, max\_rounds (default 2) |
+| POST /runs | Start a debate: pack, input, model\_ids, max\_rounds, frame, escalate |
 | GET /runs/{id}/events | SSE stream of the debate |
 | GET /runs/{id} | Final stored result |
+| GET /runs/{id}/export?format=md\|html | Download a completed transcript or report |
 | POST /calibrate | Calibrate chosen models on a pack |
 | POST /eval | Run held-out evaluation; GET /eval/latest returns the table |
 | GET /jobs/{id}/events | SSE progress for calibration and eval jobs |
@@ -47,13 +48,15 @@ The two workstreams meet only at the HTTP and SSE contract below. It lives in `c
 | Event | Payload |
 | --- | --- |
 | run\_started | run\_id, pack, model\_ids, aliases |
+| framed | Neutral restatement and input flags, when framing is enabled |
 | round\_started | round (0 = blind) |
 | model\_message | round, model\_id, alias, position, findings, changed, changed\_reason, text |
 | round\_finished | round, agreement (0 to 1) |
 | stopped | reason: consensus, stalemate, max\_rounds or budget |
+| escalated / finished\_early | Auto-escalation decision or early completion and calls saved |
 | tally | clusters with supporters, weights used, weighted score |
 | judge\_ruling | ruling per cluster, overrides\_vote (true or false), reason |
-| final | verdict, confirmed findings, disputed findings, dissent |
+| final | verdict, findings, dissent, agreements, clashes, blind spots, recommendation, next step |
 | error | code, message |
 
 **Core objects**
@@ -128,6 +131,24 @@ Build against the mock server first, then switch to live.
 | P3 README and demo | Install steps, model attribution and license table, honest limitations, `DEMO.md` script, demo recording | A stranger can reproduce the demo |
 
 **Order:** F0, F1 and P1 first (Gideon's calibration needs the corpus), then F2 and F3, then F5, F4, F6, P2, P3.
+
+## Implementation status — 2026-10-30
+
+The `frontend/codex` branch implements the F0–F3 review-room path against contract v1.1.0: the Vite
+fixture replay, live pack/model loading, pasted or uploaded input, model/panel/round configuration,
+streamed review and ruling, plus framing, escalation, critique, locality and export affordances. P1
+adds a deterministic mutation generator and separate calibration/held-out corpora with clean controls.
+The Model Manager, profiles, evaluation page, claim-check pack, and demo materials remain pending.
+
+The local clone includes the merged v1.1 backend and contract. This branch does not change
+`backend/` or `contracts/`. A real inference run still depends on a configured and reachable model
+provider, so UI build success should not be described as live inference validation.
+
+P1 has 12 calibration and 14 held-out examples: one positive and one clean example per category in
+calibration, and the same in held-out except SQL injection has a second positive example. That is
+useful for pipeline development, but far too small for stable skill estimates or comparative
+performance claims. Keep sample counts and synthetic-data limits visible; expand and human-review the
+corpus before publishing model rankings.
 
 ## Integration checkpoints
 
