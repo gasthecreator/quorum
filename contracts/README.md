@@ -1,6 +1,6 @@
 # Quorum contract
 
-Version: see [`VERSION`](VERSION) (currently 1.2.0). 1.1 added the framer, critique round, richer `final`,
+Version: see [`VERSION`](VERSION) (currently 1.3.0). 1.3 adds roles and the outsider. 1.1 added the framer, critique round, richer `final`,
 escalation, export and locality; 1.2 adds tool grounding (`ground`, `grounded`, tool-verified clusters).
 Nothing was removed or renamed since 1.0. This folder is the only surface the backend and
 frontend share. The Python models in `backend/quorum/schemas.py` are the source of truth;
@@ -96,6 +96,17 @@ reject a tool-verified cluster. `grounded.available` is false (with `error`) whe
 and the run carries on; `GET /health` reports `grounding.semgrep`. The rules are heuristics written for
 precision, cover Python only, and live in `backend/quorum/rules/python.yml`.
 
+**Roles** (`roles: "profile"`, review packs only, off by default): each model gets a one- or
+two-sentence angle (`attacker`, `maintainer` or `operator`) matched to the categories it measured best
+at; `run_started.roles` maps model_id to `{role, source, detail}` and every `model_message` carries
+its `role`. `source` is `measured` (from the profile), `default` (not calibrated yet, so assigned by
+order; show it as provisional) or `chosen` (the outsider). `outsider: true` (3+ models) takes the
+weakest specialist out: it reviews the bare input in round 0 with no framing and no peers, never
+appears in later rounds, and its vote still counts. Whether roles help is an open question: the
+evaluation can report a roles-on condition 7 (`EvalRequest.roles`) beside condition 5.
+A pack may pin a category to a role with `category_roles` in `pack.json`; otherwise the backend
+guesses from the category name.
+
 **The framer** (`framed`): one extra call, made by the judge model, that restates the input in
 neutral words so a leading prompt cannot steer every model the same way. Debaters get it as a fenced
 block next to the original input, never instead of it. `framed.error` is set if the call failed;
@@ -125,6 +136,7 @@ Things worth showing in the UI, and where they come from:
 | Top fix with a patch | `final.next_step.text`, `.patch` (null unless a panelist supplied replacement code) |
 | "Answered by 2 models" vs "escalated, because ..." | `finished_early` (`calls_saved` is a lower bound) or `escalated.reason / detail`; also `run_started.escalate` |
 | Judge skipped | `judge_ruling.skipped` |
+| Role badge on a lane | `model_message.role`, `run_started.roles[model_id].source` |
 | "Confirmed by a tool" badge; no supporters | `cluster.tool_verified`, `cluster.tool_rule`, `supporters == []`; `recommendation.tool_verified` (its confidence still reflects the panel, so it can be 0) |
 | Local vs hosted badge | `GET /models[].locality` (a hosted model sends the diff off this machine) |
 
@@ -164,13 +176,15 @@ packs/<pack-id>/heldout.jsonl
   "description": "...",
   "categories": ["sql_injection", "off_by_one", "missing_await", "unbounded_query"],
   "category_descriptions": {"sql_injection": "User input concatenated into SQL."},
+  "category_roles": {"sql_injection": "attacker"},
   "modes": ["review"],
   "corpus": {"calibration": "calibration.jsonl", "heldout": "heldout.jsonl"}
 }
 ```
 
 `id` must equal the folder name. `modes` is `["review"]` or `["claim"]`; the first entry is used.
-`category_descriptions` is optional but is shown to the models, so write it.
+`category_descriptions` is optional but is shown to the models, so write it. `category_roles` is
+optional (see Roles above).
 
 One JSON object per line in each corpus file:
 
@@ -212,6 +226,7 @@ request that produced it.
 | `escalated` | `escalate: auto`, the first two disagree, the third joins round 0 |
 | `finished_early` | `escalate: auto`, two agreeing models, no framer, judge skipped, 2 calls |
 | `grounded` | `ground: true`: Semgrep finds an off-by-one no panelist saw; a tool-only cluster is accepted |
+| `roles` | `roles=profile` + `outsider`: role badges, and the outsider speaks in round 0 only |
 | `error` | A stream that ends in `error` |
 
 These streams come from the **simulated models** (`QUORUM_ENABLE_FAKE=1`), which are rule-based

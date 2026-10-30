@@ -515,6 +515,12 @@
           "pack": {
             "title": "Pack",
             "type": "string"
+          },
+          "roles": {
+            "default": false,
+            "description": "Also run condition 7: the full debate with profile-assigned roles",
+            "title": "Roles",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1229,6 +1235,19 @@
             "title": "Category Descriptions",
             "type": "object"
           },
+          "category_roles": {
+            "additionalProperties": {
+              "enum": [
+                "attacker",
+                "maintainer",
+                "operator"
+              ],
+              "type": "string"
+            },
+            "description": "Optional: pin a category to a role. Otherwise the backend guesses from the name",
+            "title": "Category Roles",
+            "type": "object"
+          },
           "corpus": {
             "additionalProperties": {
               "type": "string"
@@ -1489,8 +1508,24 @@
             "title": "Model Ids",
             "type": "array"
           },
+          "outsider": {
+            "default": false,
+            "description": "With 3+ models, the weakest specialist reviews the bare input in round 0 only: no framing, no peers, never revises",
+            "title": "Outsider",
+            "type": "boolean"
+          },
           "pack": {
             "title": "Pack",
+            "type": "string"
+          },
+          "roles": {
+            "default": "off",
+            "description": "profile: give each model the role it measured best at (review packs only)",
+            "enum": [
+              "off",
+              "profile"
+            ],
+            "title": "Roles",
             "type": "string"
           },
           "seed": {
@@ -1688,7 +1723,7 @@
   },
   "info": {
     "title": "Quorum",
-    "version": "1.2.0"
+    "version": "1.3.0"
   },
   "openapi": "3.1.0",
   "paths": {

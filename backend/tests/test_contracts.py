@@ -35,6 +35,9 @@ def test_fixtures_validate_against_schemas():
     assert reasons == {"consensus", "stalemate", "max_rounds", "budget"}
     seen = {x["event"] for e in index for x in (json.loads(ln) for ln in (FIX / e["file"]).read_text().splitlines())}
     assert {"framed", "escalated", "finished_early", "grounded"} <= seen
+    started = [json.loads(ln)["data"] for e in index if e["file"] == "roles.jsonl"
+               for ln in (FIX / e["file"]).read_text().splitlines() if '"run_started"' in ln]
+    assert started and started[0]["roles"]
 
 
 def test_one_fixture_shows_a_judge_override():

@@ -24,6 +24,7 @@ from .config import Settings
 from .grounding import Grounder, default_grounder, timed_check
 from .packs import PackStore
 from .registry import Registry
+from .roles import assign_roles
 from .runner import CallResult, Runner
 from .schemas import (
     Agreement,
@@ -49,6 +50,7 @@ from .schemas import (
     Pack,
     Position,
     Recommendation,
+    RoleAssignment,
     RoundFinished,
     RoundStarted,
     RunRequest,
@@ -93,6 +95,7 @@ class Ctx:
     escalate: str = "always"
     frame: bool = True
     ground: bool = False
+    roles: dict[str, RoleAssignment] = field(default_factory=dict)
     framing: str | None = None
     rng: random.Random = field(default_factory=random.Random)
     started: float = field(default_factory=time.monotonic)
@@ -147,14 +150,20 @@ class Debate:
         rng = random.Random(req.seed if req.seed is not None else run_id)
         order = list(dict.fromkeys(req.model_ids))
         rng.shuffle(order)
+        weights = weights or WeightBook(self.store.profile_cells(), self.settings.default_weight)
+        roles: dict[str, RoleAssignment] = {}
+        if mode == "review" and (req.roles == "profile" or req.outsider):
+            roles = assign_roles(order, pack, weights, outsider=req.outsider)
+            if req.roles != "profile":  # outsider only
+                roles = {m: r for m, r in roles.items() if r.role == "outsider"}
         escalate = req.escalate if len(order) >= 3 else "always"  # nothing to escalate to
         frame = req.frame if req.frame is not None else escalate == "always"
         return Ctx(
-            escalate=escalate, frame=frame, ground=req.ground and mode == "review",
+            escalate=escalate, frame=frame, ground=req.ground and mode == "review", roles=roles,
             rng=random.Random(f"{req.seed if req.seed is not None else run_id}-peers"),
             run_id=run_id, pack=pack, mode=mode, text=req.input, nonce=prompts.new_nonce(),
             models=order, aliases={m: ALIASES[i] for i, m in enumerate(order)}, judge_id=judge,
-            weights=weights or WeightBook(self.store.profile_cells(), self.settings.default_weight),
+            weights=weights,
             category=req.category, max_rounds=min(req.max_rounds, 3),
             flags=prompts.scan_for_injection(req.input), emit=emit,
         )
@@ -253,7 +262,9 @@ class Debate:
             if rnd == 0:
                 if blind and m in blind:
                     return m, blind[m]
-                msgs = prompts.blind_messages(ctx.pack, ctx.mode, ctx.text, ctx.nonce, ctx.framing)
+                msgs = prompts.blind_messages(
+                    ctx.pack, ctx.mode, ctx.text, ctx.nonce,
+                    None if self._role(ctx, m) == "outsider" else ctx.framing, self._role(ctx, m))
             else:
                 peers = [(ctx.aliases[p], states[p].out) for p in ctx.models
                          if p != m and p in states]
@@ -261,10 +272,12 @@ class Debate:
                 msgs = prompts.debate_messages(
                     ctx.pack, ctx.mode, ctx.text, ctx.nonce, round_no=rnd, own_prev=states[m].out,
                     peers=peers, history_summary=self._history_summary(ctx, rounds, rnd - 1),
-                    framing=ctx.framing)
+                    framing=ctx.framing, role=self._role(ctx, m))
             return m, await self._ask(ctx, m, msgs, DebaterOutput, schema)
 
-        targets = [m for m in (targets or ctx.models) if rnd == 0 or m in states]
+        # the outsider reviews cold in round 0 and never sees peers, so it sits out visible rounds
+        targets = [m for m in (targets or ctx.models)
+                   if (rnd == 0 or m in states) and not (rnd > 0 and self._role(ctx, m) == "outsider")]
         tasks = [asyncio.create_task(ask(m)) for m in targets]
         for fut in asyncio.as_completed(tasks):
             m, res = await fut
@@ -276,7 +289,7 @@ class Debate:
                 ctx.emit("model_message", ModelMessage(
                     round=rnd, model_id=m, alias=alias, position=pos,
                     findings=prev.findings if prev else [], changed=False, changed_reason="",
-                    text="", error=errors[m], prompt_tokens=res.prompt_tokens,
+                    text="", role=self._role(ctx, m), error=errors[m], prompt_tokens=res.prompt_tokens,
                     completion_tokens=res.completion_tokens))
                 continue
             errors.pop(m, None)
@@ -301,12 +314,17 @@ class Debate:
             ctx.emit("model_message", ModelMessage(
                 round=rnd, model_id=m, alias=alias, position=new.out.position, findings=new.findings,
                 changed=changed, changed_reason=reason, text=new.out.text,
-                critique=new.out.critique if rnd > 0 else None, error=None,
+                critique=new.out.critique if rnd > 0 else None, role=self._role(ctx, m), error=None,
                 prompt_tokens=res.prompt_tokens, completion_tokens=res.completion_tokens))
         if end:
             rounds.append(answered)
             ctx.emit("round_finished", RoundFinished(round=rnd, agreement=self.agreement(ctx, states)))
         return any_changed
+
+    @staticmethod
+    def _role(ctx: Ctx, model_id: str) -> str | None:
+        a = ctx.roles.get(model_id)
+        return a.role if a else None
 
     def _over_budget(self, ctx: Ctx) -> bool:
         spent = ctx.prompt_tokens + ctx.completion_tokens
@@ -383,7 +401,7 @@ class Debate:
         emit("run_started", RunStarted(
             run_id=run_id, pack=ctx.pack.id, mode=ctx.mode, model_ids=ctx.models,
             aliases=ctx.aliases, judge_model_id=ctx.judge_id, max_rounds=ctx.max_rounds,
-            escalate=ctx.escalate, frame=ctx.frame, ground=ctx.ground,
+            escalate=ctx.escalate, frame=ctx.frame, ground=ctx.ground, roles=ctx.roles,
             input_flags=list(ctx.flags)))
         if ctx.frame:
             await self._frame(ctx)

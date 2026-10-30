@@ -7,6 +7,7 @@ import json
 import re
 import secrets
 
+from .roles import ROLE_TEXT
 from .schemas import DebaterOutput, FramerOutput, JudgeOutput, Pack
 
 INJECTION_PATTERNS: list[tuple[str, re.Pattern]] = [
@@ -112,9 +113,14 @@ Include every cluster_id from the tally exactly once. "recommendation" is one di
 the author what to do."""
 
 
-def system_prompt(pack: Pack, mode: str) -> str:
+def system_prompt(pack: Pack, mode: str, role: str | None = None) -> str:
     if mode == "claim":
         return CLAIM_SYSTEM.format(safety=SAFETY)
+    base = _review_system(pack)
+    return f"{base}\n{ROLE_TEXT[role]}" if role in ROLE_TEXT else base
+
+
+def _review_system(pack: Pack) -> str:
     cats = ", ".join(pack.categories)
     if pack.category_descriptions:
         cats = "; ".join(f"{c} ({pack.category_descriptions.get(c, '')})".replace(" ()", "")
@@ -157,12 +163,12 @@ def framer_messages(mode: str, text: str, nonce: str) -> list[dict]:
 
 
 def blind_messages(pack: Pack, mode: str, text: str, nonce: str,
-                   framing: str | None = None) -> list[dict]:
+                   framing: str | None = None, role: str | None = None) -> list[dict]:
     task = ("Review the code below." if mode == "review" else "Check the claim below.")
     parts = [f"Round 0 (independent, blind). {task}", input_block(mode, text, nonce),
              framing_block(framing, nonce), "Reply with the JSON object."]
     return [
-        {"role": "system", "content": system_prompt(pack, mode)},
+        {"role": "system", "content": system_prompt(pack, mode, role)},
         {"role": "user", "content": "\n\n".join(p for p in parts if p)},
     ]
 
@@ -178,6 +184,7 @@ def debate_messages(
     peers: list[tuple[str, DebaterOutput]],
     history_summary: str,
     framing: str | None = None,
+    role: str | None = None,
 ) -> list[dict]:
     peer_blocks = "\n".join(_fence(f"PEER {alias}", nonce, _compact(m)) for alias, m in peers)
     parts = [
@@ -201,7 +208,7 @@ def debate_messages(
         "including you, miss?). Write \"none\" if there is nothing to say.")
     parts.append("Reply with the JSON object.")
     return [
-        {"role": "system", "content": system_prompt(pack, mode)},
+        {"role": "system", "content": system_prompt(pack, mode, role)},
         {"role": "user", "content": "\n\n".join(parts)},
     ]
 

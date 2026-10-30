@@ -61,7 +61,8 @@ def _default_models(state: AppState, n: int = 3) -> list[str]:
 
 def _fmt_event(event: str, d: dict) -> str | None:
     if event == "run_started":
-        al = ", ".join(f"{a}={m}" for m, a in d["aliases"].items())
+        al = ", ".join(f"{a}={m}" + (f"[{d['roles'][m]['role']}]" if m in d.get("roles", {}) else "")
+                       for m, a in d["aliases"].items())
         flags = f"  !! input looks like it is steering the models: {d['input_flags']}" if d["input_flags"] else ""
         return f"Run {d['run_id']}  [{d['pack']}]  {al}  judge={d['judge_model_id']}{flags}"
     if event == "framed":
@@ -153,6 +154,7 @@ async def _review(a) -> int:
     judge = _resolve(state, [a.judge])[0] if a.judge else None
     req = RunRequest(pack=a.pack, input=text, model_ids=models, judge_model_id=judge,
                      max_rounds=a.rounds, seed=a.seed, escalate=a.escalate, ground=a.ground,
+                     roles="profile" if a.roles else "off", outsider=a.outsider,
                      frame=False if a.no_frame else None)
     run_id = uuid.uuid4().hex[:10]
     events: list[dict] = []
@@ -222,7 +224,7 @@ async def _eval(a) -> int:
     models = _resolve(state, a.models.split(","))
     judge = _resolve(state, [a.judge])[0] if a.judge else None
     req = EvalRequest(pack=a.pack, model_ids=models, judge_model_id=judge, max_rounds=a.rounds,
-                      limit=a.limit)
+                      limit=a.limit, roles=a.roles)
     res = await run_eval(state.debate, req,
                          lambda i, n, m: print(f"\r  item {i}/{n} {m:<30}", end="", flush=True))
     print(f"\n\nHeld-out evaluation  pack={res.pack}  items={res.n_items} "
@@ -295,6 +297,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--json", action="store_true")
     r.add_argument("--escalate", choices=["auto", "always"], default="always",
                    help="auto: two models first, full debate only if they disagree")
+    r.add_argument("--roles", action="store_true",
+                   help="give each model the role (attacker/maintainer/operator) it measured best at")
+    r.add_argument("--outsider", action="store_true",
+                   help="3+ models: the weakest specialist reviews the bare input and never revises")
     r.add_argument("--ground", action="store_true",
                    help="run Semgrep over the input; a tool-confirmed finding outranks the vote")
     r.add_argument("--no-frame", action="store_true", help="skip the neutral framing call")
@@ -311,6 +317,7 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--judge")
     e.add_argument("--rounds", type=int, default=2)
     e.add_argument("--limit", type=int)
+    e.add_argument("--roles", action="store_true", help="also run condition 7 (roles ablation)")
 
     sub.add_parser("profiles")
 

@@ -5,7 +5,7 @@ Python 3.11+, FastAPI, SQLite. Runs without the UI.
 ```bash
 cd backend
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/pytest -q                      # 70 tests, no model server needed
+.venv/bin/pytest -q                      # 85 tests, no model server needed
 .venv/bin/quorum serve                   # http://127.0.0.1:8787
 ```
 
@@ -86,6 +86,12 @@ Design decisions worth knowing:
   precision-first and Python-only. They were written with the dev pack's bug shapes in view, so the
   eval's condition 6 on that pack proves nothing; test it on a pack the rules never saw. Eval
   condition 6 is the same debate as condition 5 re-adjudicated with the tool results.
+- **Roles (B16).** `--roles` / `roles: profile` assigns attacker, maintainer and operator by greedy
+  best fit on the pooled Wilson lower bound of the categories each role owns (uncalibrated models are
+  assigned by order and marked `default`). `--outsider` removes the weakest specialist from the
+  debate after a cold round-0 review. Role text is one or two sentences by design; the judge never
+  gets a role. These are unmeasured personas until `quorum eval --roles` has been run on a real
+  held-out split: condition 7 is the ablation of condition 5. No claim is made until then.
 - **Failure handling.** A model that fails to answer is carried over (or `unsure`) and excluded from
   the denominator; if none answer the run ends with an `error` event. Calibration refuses to write
   a profile if a third of the items got no usable answer.
@@ -101,6 +107,6 @@ Design decisions worth knowing:
 - **Real-model validation.** Ollama is not installed on this machine, so the adapters are tested
   against an HTTP stand-in (`tests/fake_ollama.py`) and with mocked responses, never against a real
   model. First real run will need prompt tuning for small models.
-- **B16 roles and B17 MCP wrapper** (stretch) are not started.
+- **B17 MCP wrapper** (stretch) is not started.
 - **B10** is Semgrep-only; running the code's tests is not built, and the rules cover the four dev-pack bug types.
 - The model lineup, parallelism and judge model wait on hardware (8 GB M2).
