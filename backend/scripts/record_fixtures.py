@@ -17,13 +17,15 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from quorum.calibrate import calibrate_many
+from quorum.chat import ChatManager
 from quorum.config import Settings
 from quorum.engine import Debate, DebateError
 from quorum.packs import PackStore
 from quorum.registry import Registry
 from quorum.runner import Runner
-from quorum.schemas import ErrorEvent, RunRequest
+from quorum.schemas import ChatCreate, ErrorEvent, RunRequest
 from quorum.store import Store
+from quorum.streams import Streams
 
 OUT = ROOT / "contracts" / "fixtures"
 
@@ -113,6 +115,50 @@ async def main():
                                   "models": models, "judge": judge}})
     (OUT / "index.json").write_text(json.dumps(index, indent=2) + "\n")
     print(f"wrote {len(CASES)} fixtures to {OUT}")
+    await record_chats(debate, store, s, ids)
+
+
+CHAT_DELAYS = {"chat_started": (0, 0), "user_message": (150, 300), "model_typing": (60, 200),
+               "chat_message": (900, 2400), "judge_message": (1500, 2800), "turn_finished": (40, 80),
+               "error": (100, 200)}
+
+CHAT_CASES = [
+    ("basic", "Two turns with three panelists and one reaction round. A model passes in the reaction "
+              "round; the judge summarises each turn; the second message continues the thread.",
+     ["sharp", "sloppy", "stubborn"], "sharp", 1,
+     ["Should I use SQLite or Postgres for a small side project?", "And how should I back it up?"]),
+    ("one_model_fails", "One panelist returns nothing (error on its chat_message); the others and the "
+                        "judge carry on.", ["sharp", "broken", "stubborn"], "sharp", 0,
+     ["Is a monorepo worth it for three small services?"]),
+    ("all_fail", "Nobody can reply: an error event, then turn_finished. The chat stays usable.",
+     ["broken"], "broken", 0, ["Anyone there?"]),
+]
+
+
+async def record_chats(debate, store, settings, ids):
+    out = OUT / "chat"
+    if out.exists():
+        shutil.rmtree(out)
+    out.mkdir(parents=True)
+    index = []
+    for name, desc, models, judge, rounds, messages in CHAT_CASES:
+        mgr = ChatManager(debate.registry, debate.runner, store, Streams(store), settings)
+        chat = mgr.create(ChatCreate(model_ids=[ids[m] for m in models], judge_model_id=ids[judge],
+                                     rounds=rounds, title=messages[0][:40]))
+        for text in messages:
+            _, _, coro = mgr.begin_turn(chat.chat_id, text)
+            await coro
+        events = [(e["event"], e["data"]) for e in mgr.log(chat.chat_id).events]
+        rng, t, lines = random.Random(f"chat-{name}"), 0, []
+        for seq, (ev, data) in enumerate(events, 1):
+            lo, hi = CHAT_DELAYS[ev]
+            t += rng.randint(lo, hi)
+            lines.append(json.dumps({"seq": seq, "t_ms": t, "event": ev, "data": data}))
+        (out / f"{name}.jsonl").write_text("\n".join(lines) + "\n")
+        index.append({"file": f"{name}.jsonl", "description": desc, "messages": messages,
+                      "models": models, "judge": judge, "rounds": rounds})
+    (out / "index.json").write_text(json.dumps(index, indent=2) + "\n")
+    print(f"wrote {len(CHAT_CASES)} chat fixtures to {out}")
 
 
 asyncio.run(main())

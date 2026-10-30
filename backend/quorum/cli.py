@@ -20,11 +20,13 @@ from pathlib import Path
 
 from .api import AppState
 from .calibrate import calibrate_many
+from .chat import ChatManager
 from .config import Settings
 from .evaluate import run_eval
 from .export import to_html, to_markdown
 from .registry import RegistryError
-from .schemas import EvalRequest, ModelCreate, RunRequest
+from .schemas import ChatCreate, EvalRequest, ModelCreate, RunRequest
+from .streams import Streams
 from .weights import WeightBook
 
 
@@ -184,6 +186,64 @@ async def _review(a) -> int:
     return 0
 
 
+def _fmt_chat(event: str, d: dict, names: dict[str, str]) -> str | None:
+    if event == "chat_message":
+        who = f"{names.get(d['model_id'], d['alias'])} ({d['alias']})"
+        if d["error"]:
+            return f"  {who}: [no reply: {d['error']}]"
+        if d["passed"]:
+            return f"  {who}: [nothing to add]"
+        return f"  {who}: {d['text']}"
+    if event == "judge_message":
+        if d["error"]:
+            return f"  Judge: [no summary: {d['error']}]"
+        return (f"\n  Judge: {d['answer'] or d['text']}\n"
+                f"    consensus: {d['consensus'] or '-'}\n    disagreement: {d['disagreement'] or '-'}")
+    if event == "error":
+        return f"  !! {d['code']}: {d['message']}"
+    return None
+
+
+async def _chat(a) -> int:
+    """A terminal group chat: type a message, every model replies in the thread."""
+    state = _state()
+    await state.registry.refresh()
+    models = _resolve(state, a.models.split(",")) if a.models else _default_models(state)
+    if not models:
+        raise SystemExit("no models available. Pull one with Ollama or set QUORUM_ENABLE_FAKE=1")
+    judge = _resolve(state, [a.judge])[0] if a.judge else None
+    mgr = ChatManager(state.registry, state.runner, state.store, Streams(state.store), state.settings)
+    chat = mgr.create(ChatCreate(model_ids=models, judge_model_id=judge, rounds=a.rounds))
+    names = {m["id"]: m["tag"] for m in state.store.list_models()}
+    print(f"Group chat {chat.chat_id}: " + ", ".join(f"{al}={names.get(m, m)}" for m, al in chat.aliases.items())
+          + f"  | judge={names.get(chat.judge_model_id)}  | rounds={a.rounds}\nType a message. Empty line or Ctrl-D to leave.")
+    log = mgr.log(chat.chat_id)
+
+    async def printer():
+        async for env in log.follow(0):
+            line = _fmt_chat(env["event"], env["data"], names)
+            if line:
+                print(line, flush=True)
+
+    task = asyncio.create_task(printer())
+    try:
+        while True:
+            try:
+                text = await asyncio.to_thread(input, "\nyou> ")
+            except EOFError:
+                break
+            if not text.strip():
+                break
+            _, _, coro = mgr.begin_turn(chat.chat_id, text.strip())
+            await coro
+            await asyncio.sleep(0.05)  # let the printer drain
+    finally:
+        log.close()
+        await task
+        await state.registry.aclose()
+    return 0
+
+
 async def _calibrate(a) -> int:
     state = _state()
     await state.registry.refresh()
@@ -319,6 +379,11 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--limit", type=int)
     e.add_argument("--roles", action="store_true", help="also run condition 7 (roles ablation)")
 
+    c2 = sub.add_parser("chat", help="a group chat in the terminal: every model replies to each message")
+    c2.add_argument("--models", help="comma-separated ids or tags (default: three families)")
+    c2.add_argument("--judge")
+    c2.add_argument("--rounds", type=int, default=1, choices=[0, 1, 2])
+
     sub.add_parser("profiles")
     sub.add_parser("mcp", help="run the quorum-mcp stdio server for coding agents")
 
@@ -359,7 +424,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if a.cmd == "models" and a.action == "add" and not (a.provider and a.tag):
         ap.error("models add needs --provider and --tag")
-    handler = {"review": _review, "calibrate": _calibrate, "eval": _eval, "models": _models}[a.cmd]
+    handler = {"review": _review, "calibrate": _calibrate, "eval": _eval, "models": _models, "chat": _chat}[a.cmd]
     return asyncio.run(handler(a))
 
 

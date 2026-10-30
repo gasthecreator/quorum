@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from .store import Store
 
 RUN_TERMINAL = {"final", "error"}
+CHAT_TERMINAL: set[str] = set()  # a chat stream stays open until the client leaves
 JOB_TERMINAL = {"job_done", "job_error"}
 
 
@@ -95,13 +96,14 @@ class Streams:
         self._logs[stream_id] = log
         return log
 
-    def get(self, stream_id: str, terminal: set[str]) -> EventLog | None:
+    def get(self, stream_id: str, terminal: set[str], *, resumable: bool = False) -> EventLog | None:
+        """resumable: a long-lived log (a chat) that may get new events after a restart."""
         if stream_id in self._logs:
             return self._logs[stream_id]
         events = self.store.events(stream_id)
         if not events:
             return None
         log = EventLog(stream_id, self.store, terminal, existing=events)
-        log.done = True  # nothing is producing into a log loaded from disk
+        log.done = not resumable  # nothing is producing into a finished run's log loaded from disk
         self._logs[stream_id] = log
         return log

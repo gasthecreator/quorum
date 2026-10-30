@@ -1,6 +1,6 @@
 # Quorum contract
 
-Version: see [`VERSION`](VERSION) (currently 1.3.0). 1.3 adds roles and the outsider. 1.1 added the framer, critique round, richer `final`,
+Version: see [`VERSION`](VERSION) (currently 1.4.0). 1.4 adds the group chat (`/chats`). 1.3 adds roles and the outsider. 1.1 added the framer, critique round, richer `final`,
 escalation, export and locality; 1.2 adds tool grounding (`ground`, `grounded`, tool-verified clusters).
 Nothing was removed or renamed since 1.0. This folder is the only surface the backend and
 frontend share. The Python models in `backend/quorum/schemas.py` are the source of truth;
@@ -25,7 +25,7 @@ Frozen after checkpoint C0. Open a pull request labeled `contract`, regenerate t
 
 Every non-2xx response is `{"code": str, "message": str}`. Codes the UI should handle:
 `validation_error` (422), `unknown_run`, `unknown_job`, `unknown_model`, `pack_error` (404),
-`model_unavailable` (409), `model_not_installed` (409), `run_not_finished` (409), `ollama_unreachable` (503),
+`unknown_chat` (404), `turn_in_progress` (409), `model_unavailable` (409), `model_not_installed` (409), `run_not_finished` (409), `ollama_unreachable` (503),
 `base_url_required`, `api_key_missing`, `fake_disabled` (400), `no_eval` (404).
 
 ## Endpoints
@@ -44,6 +44,11 @@ Every non-2xx response is `{"code": str, "message": str}`. Codes the UI should h
 | `POST /calibrate` | `CalibrateRequest` | 202 `{job_id}` |
 | `POST /eval` | `EvalRequest` | 202 `{job_id}` |
 | `GET /eval/latest?pack=` | | `EvalResult`; 404 `no_eval` before the first run |
+| `POST /chats` | `ChatCreate` | 201 `ChatCreated {chat_id, turn, message_id}`; `message` starts turn 1 |
+| `GET /chats` | | `ChatListItem[]` newest first |
+| `GET /chats/{id}` | | `ChatSummary` (config, `status` idle or replying, every event so far) |
+| `POST /chats/{id}/messages` | `{text}` | 202 `{chat_id, turn, message_id}`; 409 `turn_in_progress` while the panel is replying |
+| `GET /chats/{id}/events` | | SSE that **stays open**, see Group chat |
 | `GET /jobs/{id}` | | `Job` (poll alternative to SSE) |
 | `GET /jobs/{id}/events` | | SSE of `job_progress`, then `job_done` or `job_error` |
 
@@ -148,6 +153,44 @@ vote before the judge; a cluster is confirmed when its ruling has `accept: true`
 
 `weight_source` matters: `default` means the model was never calibrated on this pack and a flat
 0.5 was used, so the bar should look provisional.
+
+## Group chat (v1.4)
+
+The WhatsApp/Slack-style surface: the human types one message into a single thread, every model
+answers in it, and follow-ups continue the same thread. This is separate from `/runs`, which stays the
+structured review (findings, weighted vote, judge ruling). A chat has no weights and no verdict, the
+judge only summarises.
+
+A **turn** starts with a human message and goes:
+
+```
+user_message
+model_typing x N  ->  chat_message x N                 # round 0: everyone answers independently
+[model_typing x N ->  chat_message x N] x rounds       # rounds 1..2: each model reacts to the others, or passes
+model_typing(role=judge) -> judge_message              # consensus / disagreement / best answer
+turn_finished                                          # always sent, even after an error
+```
+
+- `GET /chats/{id}/events` **never ends by itself**: a chat is open-ended, so there is no terminal event.
+  Keep the `EventSource` open while the chat is on screen, send `Last-Event-ID` (or `?after=`) on
+  reconnect, and close it when the user leaves. It replays the whole thread, so a page reload restores it.
+- `model_typing` is a hint to show a typing indicator on that participant until its `chat_message`
+  (or the judge's `judge_message`) arrives. Replies arrive in completion order.
+- `chat_message.passed` is true when a model had nothing to add in a reaction round (`text` is empty):
+  render it as "has nothing to add", or hide it. `chat_message.error` set means that model failed; the
+  others carry on. If nobody replies, an `error` event (`all_models_failed`) precedes `turn_finished`.
+- `judge_message` carries `consensus`, `disagreement` and `answer` parsed from the judge's three lines;
+  `text` is the raw reply if parsing found nothing. `answer` is what to show as "the answer".
+- Participants appear to each other as aliases (`A`, `B`, `C`), exactly like the review debate; the UI
+  shows real model names from `ChatSummary.model_ids` / `aliases`. The chat's `aliases` map model_id to
+  letter.
+- Send the next message only after `turn_finished`; otherwise `POST .../messages` returns 409.
+- Text from other participants reaches a model only inside quoted fences, and the system prompt says it is
+  not instructions. The human's own message is the instruction, as in any chat.
+- Earlier turns reach the models as the human's message plus the judge's answer (last 4 turns, capped).
+
+Fixtures for the mock server are in `fixtures/chat/` (own `index.json`): `basic` (two turns, a pass),
+`one_model_fails`, `all_fail`. Same line format as the run fixtures; `t_ms` is the synthetic clock.
 
 ## Line numbers
 

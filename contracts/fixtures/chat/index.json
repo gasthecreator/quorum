@@ -1,0 +1,43 @@
+[
+  {
+    "file": "basic.jsonl",
+    "description": "Two turns with three panelists and one reaction round. A model passes in the reaction round; the judge summarises each turn; the second message continues the thread.",
+    "messages": [
+      "Should I use SQLite or Postgres for a small side project?",
+      "And how should I back it up?"
+    ],
+    "models": [
+      "sharp",
+      "sloppy",
+      "stubborn"
+    ],
+    "judge": "sharp",
+    "rounds": 1
+  },
+  {
+    "file": "one_model_fails.jsonl",
+    "description": "One panelist returns nothing (error on its chat_message); the others and the judge carry on.",
+    "messages": [
+      "Is a monorepo worth it for three small services?"
+    ],
+    "models": [
+      "sharp",
+      "broken",
+      "stubborn"
+    ],
+    "judge": "sharp",
+    "rounds": 0
+  },
+  {
+    "file": "all_fail.jsonl",
+    "description": "Nobody can reply: an error event, then turn_finished. The chat stays usable.",
+    "messages": [
+      "Anyone there?"
+    ],
+    "models": [
+      "broken"
+    ],
+    "judge": "broken",
+    "rounds": 0
+  }
+]

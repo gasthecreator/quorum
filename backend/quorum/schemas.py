@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CONTRACT_VERSION = "1.3.0"
+CONTRACT_VERSION = "1.4.0"
 
 Verdict = Literal["issue", "no_issue", "true", "false", "unsure"]
 Severity = Literal["low", "medium", "high", "critical"]
@@ -625,6 +625,128 @@ class EvalResult(Strict):
     conditions: list[ConditionResult]
     debate_movement: DebateMovement
     notes: list[str] = Field(default_factory=list)
+
+
+# --------------------------------------------------------------------------- group chat (v1.4)
+# A chat is a long-lived thread. The human types a message; every panelist replies in the thread, may
+# react to the others, and a judge posts a short summary. Follow-up messages continue the thread.
+# Panelists see each other as aliases (A, B, C); the UI shows the real model names.
+
+
+class ChatCreate(Strict):
+    model_ids: list[str] = Field(min_length=1, max_length=6)
+    judge_model_id: str | None = Field(default=None, description="Defaults to the first model")
+    rounds: int = Field(
+        default=1, ge=0, le=2,
+        description="0: each model replies once. 1 or 2: after the replies, each model may react to "
+        "the others (or pass) that many times")
+    title: str | None = Field(default=None, max_length=80)
+    message: str | None = Field(
+        default=None, max_length=4000, description="If given, starts the first turn immediately")
+
+
+class ChatCreated(Strict):
+    chat_id: str
+    turn: int | None = Field(default=None, description="1 when `message` was given")
+    message_id: str | None = None
+
+
+class ChatMessageRequest(Strict):
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class ChatMessageAccepted(Strict):
+    chat_id: str
+    turn: int
+    message_id: str
+
+
+class ChatListItem(Strict):
+    chat_id: str
+    title: str
+    model_ids: list[str]
+    created_at: str
+    turns: int
+    last_message: str = ""
+
+
+class ChatSummary(Strict):
+    chat_id: str
+    title: str
+    model_ids: list[str]
+    aliases: dict[str, str]
+    judge_model_id: str
+    rounds: int
+    created_at: str
+    status: Literal["idle", "replying"]
+    events: list[EventEnvelope] = Field(default_factory=list)
+
+
+class ChatStarted(Strict):
+    chat_id: str
+    title: str
+    model_ids: list[str]
+    aliases: dict[str, str]
+    judge_model_id: str
+    rounds: int
+
+
+class UserMessage(Strict):
+    turn: int
+    message_id: str
+    text: str
+
+
+class ModelTyping(Strict):
+    """Show a typing indicator for this participant until its chat_message / judge_message arrives."""
+
+    turn: int
+    round: int
+    model_id: str
+    alias: str
+    role: Literal["panelist", "judge"]
+
+
+class ChatReply(Strict):
+    """A panelist's message. `passed` means it had nothing to add in a reaction round (text is empty)."""
+
+    turn: int
+    round: int = Field(description="0 is the first reply; 1 and 2 are reactions to the others")
+    message_id: str
+    model_id: str
+    alias: str
+    text: str
+    passed: bool = False
+    error: str | None = None
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
+class JudgeMessage(Strict):
+    turn: int
+    message_id: str
+    model_id: str
+    text: str
+    consensus: str = ""
+    disagreement: str = ""
+    answer: str = ""
+    error: str | None = None
+
+
+class TurnFinished(Strict):
+    turn: int
+    usage: Usage
+
+
+CHAT_EVENT_MODELS: dict[str, type[BaseModel]] = {
+    "chat_started": ChatStarted,
+    "user_message": UserMessage,
+    "model_typing": ModelTyping,
+    "chat_message": ChatReply,
+    "judge_message": JudgeMessage,
+    "turn_finished": TurnFinished,
+    "error": ErrorEvent,
+}
 
 
 class ApiError(Strict):

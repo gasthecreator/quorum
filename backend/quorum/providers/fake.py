@@ -73,6 +73,9 @@ class FakeProvider:
         if self.delay_s:
             await asyncio.sleep(self.delay_s)
         system, user = messages[0]["content"], messages[-1]["content"]
+        if "group chat" in system:  # plain-text chat, not JSON (contract v1.4)
+            text = self._chat(system, user)
+            return Completion(text, prompt_tokens=len(system + user) // 4, completion_tokens=len(text) // 4)
         if self.kind == "broken":
             return Completion("I think the code looks fine to me!", 10, 8)
         if "You restate inputs neutrally" in system:
@@ -83,6 +86,35 @@ class FakeProvider:
             out = self._debater(system, user)
         text = json.dumps(out)
         return Completion(text, prompt_tokens=len(system + user) // 4, completion_tokens=len(text) // 4)
+
+    # ------------------------------------------------------------------ group chat
+
+    def _chat(self, system: str, user: str) -> str:
+        if self.kind == "broken":
+            return ""
+        if "You are the judge of a group chat" in system:
+            lines = re.findall(r"^([A-H]): (.+)$", user, re.MULTILINE)
+            human = (re.findall(r"^Human: (.+)$", user, re.MULTILINE) or ["x"])[-1]
+            if not lines:
+                return "Consensus: none\nDisagreement: none\nAnswer: Nobody replied."
+            agreed = len({t for _, t in lines}) < len(lines) or any("agree" in t.lower() for _, t in lines)
+            return (f"Consensus: {'most participants back the same approach' if agreed else 'none'}\n"
+                    f"Disagreement: {'none' if agreed else 'they suggested different approaches'}\n"
+                    f"Answer: For \"{human[:60]}\", start with the simplest option and measure it.")
+        alias = (re.search(r"participant ([A-H])", system) or re.search("(A)", "A")).group(1)
+        human = (re.findall(r"^Human(?: \(latest message\))?: (.+)$", user, re.MULTILINE) or ["it"])[-1]
+        topic = " ".join(human.split()[:6])
+        reacting = "reply with exactly: PASS" in user
+        if not reacting:
+            if self.kind == "sloppy":
+                return f"Quick take on \"{topic}\": I would just go with the popular choice."
+            return f"On \"{topic}\": start with the simplest option and measure it before adding anything."
+        if self.kind == "stubborn":
+            return "PASS"
+        peers = [a for a, _ in re.findall(r"^([A-H]): (.+)$", user, re.MULTILINE) if a != alias]
+        if self.kind == "sloppy" and peers:
+            return f"I agree with {peers[0]}; measuring first is sensible."
+        return "PASS" if not peers else f"One caveat to {peers[0]}: measure on your own data, not a benchmark."
 
     # ------------------------------------------------------------------ framer
 
