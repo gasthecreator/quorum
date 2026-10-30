@@ -1,5 +1,5 @@
 import type { EventEnvelope, Fixture } from "./types";
-import type { Health, ModelInfo, PackInfo, ProfilesResponse, RunCreated, RunRequest } from "./contracts";
+import type { EvalRequest, EvalResult, Health, JobCreated, ModelCreate, ModelCreated, ModelInfo, PackInfo, ProfilesResponse, RunCreated, RunRequest } from "./contracts";
 
 const mockRoot = "/__mock";
 const liveRoot = "http://127.0.0.1:8787";
@@ -32,9 +32,38 @@ export async function getModels(): Promise<ModelInfo[]> {
   return request<ModelInfo[]>(liveRoot, "/models");
 }
 
+export async function addModel(payload: ModelCreate): Promise<ModelCreated> {
+  return request<ModelCreated>(liveRoot, "/models", { method: "POST", body: JSON.stringify(payload) });
+}
+
 export async function getProfiles(pack?: string): Promise<ProfilesResponse> {
   const query = pack ? `?pack=${encodeURIComponent(pack)}` : "";
   return request<ProfilesResponse>(liveRoot, `/profiles${query}`);
+}
+
+export async function getLatestEval(pack?: string): Promise<EvalResult> {
+  const query = pack ? `?pack=${encodeURIComponent(pack)}` : "";
+  return request<EvalResult>(liveRoot, `/eval/latest${query}`);
+}
+
+export async function startEval(payload: EvalRequest): Promise<string> {
+  const result = await request<JobCreated>(liveRoot, "/eval", { method: "POST", body: JSON.stringify(payload) });
+  return result.job_id;
+}
+
+export function subscribeToJob(jobId: string, onEvent: (event: EventEnvelope) => void, onError: (error: Error) => void): () => void {
+  const source = new EventSource(`${liveRoot}/jobs/${encodeURIComponent(jobId)}/events`);
+  for (const name of ["job_progress", "job_done", "job_error"]) {
+    source.addEventListener(name, (rawEvent) => {
+      const event = rawEvent as MessageEvent<string>;
+      onEvent({ seq: Number(event.lastEventId) || 0, event: name, data: JSON.parse(event.data) as Record<string, unknown> });
+      if (name === "job_done" || name === "job_error") source.close();
+    });
+  }
+  source.onerror = () => {
+    if (source.readyState === EventSource.CLOSED) onError(new Error("The calibration job stream closed unexpectedly."));
+  };
+  return () => source.close();
 }
 
 export async function startFixtureRun(fixture: Fixture): Promise<string> {

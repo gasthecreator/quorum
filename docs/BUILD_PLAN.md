@@ -40,7 +40,7 @@ The two workstreams meet only at the HTTP and SSE contract below. It lives in `c
 | GET /runs/{id} | Final stored result |
 | GET /runs/{id}/export?format=md\|html | Download a completed transcript or report |
 | POST /calibrate | Calibrate chosen models on a pack |
-| POST /eval | Run held-out evaluation; GET /eval/latest returns the table |
+| POST /eval | Run six baseline conditions and optionally condition 7 (roles); GET /eval/latest returns the table |
 | GET /jobs/{id}/events | SSE progress for calibration and eval jobs |
 
 **Run events (SSE)**
@@ -107,7 +107,7 @@ Everything runs without the UI: `quorum review file.diff`, `quorum calibrate`, `
 | B5 Clustering and tally | Group findings across models by file, line overlap and category; cluster score = sum of weight times confidence | The same bug flagged by three models becomes one cluster |
 | B6 Judge | Anonymized prompt, sees the tally, overrides only with a stated reason, guard against instructions hidden in the code | Override flag and reason appear in judge\_ruling |
 | B7 Calibration | Runs a pack's calibration corpus; writes profiles with n and the Wilson lower bound; weight = max(lower bound, 0.05) | GET /profiles returns real numbers for every model and category |
-| B8 Evaluation | Held-out split under the 6 conditions in Evaluation; CSV and JSON | GET /eval/latest returns the table |
+| B8 Evaluation | Held-out split under six baseline conditions and optional role condition 7; CSV and JSON | GET /eval/latest returns the table |
 | B9 API and CLI | All endpoints and SSE streams in the contract | Frontend live mode works |
 | B10 Stretch: tool grounding | Semgrep or test runs; a tool-confirmed finding outranks any vote | Findings tagged `tool_verified` |
 
@@ -134,21 +134,41 @@ Build against the mock server first, then switch to live.
 
 ## Implementation status — 2026-10-30
 
-The `frontend/codex` branch implements the F0–F3 review-room path against contract v1.1.0: the Vite
-fixture replay, live pack/model loading, pasted or uploaded input, model/panel/round configuration,
-streamed review and ruling, plus framing, escalation, critique, locality and export affordances. P1
-adds a deterministic mutation generator and separate calibration/held-out corpora with clean controls.
-The Model Manager, profiles, evaluation page, claim-check pack, and demo materials remain pending.
+The merged review-room work implements F0–F3: Vite fixture replay, live
+pack/model loading, pasted or uploaded input, panel/round configuration, streamed review and ruling,
+framing, escalation, critique, locality and exports. Merged PR #7 adds F4/F5/F6: profiles from
+`GET /profiles`, model registration with streamed calibration progress, and held-out comparisons
+from `GET /eval/latest` with evaluation jobs from `POST /eval`. Merged backend PRs also add role
+routing and the stdio MCP server (B16/B17); role impact remains an empirical question until measured
+on real held-out data.
+P1 adds a deterministic mutation generator and separate calibration/held-out corpora with clean
+controls. P2 adds 40 source-linked claims, split evenly across calibration and held-out data and
+balanced by label and category. P3 now has install/model attribution notes and a runnable `DEMO.md`
+runbook. The runbook has not been rehearsed with real inference, and no demo recording exists yet.
 
-The local clone includes the merged v1.1 backend and contract. This branch does not change
-`backend/` or `contracts/`. A real inference run still depends on a configured and reachable model
-provider, so UI build success should not be described as live inference validation.
+The current contract version is v1.3.0. Merged PR #7 did not change `backend/` or `contracts/`. A real
+inference run still depends on a configured and reachable model provider, so UI build success should
+not be described as live inference validation.
 
 P1 has 12 calibration and 14 held-out examples: one positive and one clean example per category in
 calibration, and the same in held-out except SQL injection has a second positive example. That is
 useful for pipeline development, but far too small for stable skill estimates or comparative
 performance claims. Keep sample counts and synthetic-data limits visible; expand and human-review the
 corpus before publishing model rankings.
+
+P2 has 20 calibration and 20 held-out claims across astronomy, SI units, hydrology and oceanography.
+Each split has 10 true and 10 false items, with five items per category; labels include a source URL.
+This is still too small for stable comparative estimates. The deterministic generator checks split
+sizes, label balance, category balance, duplicate text and overlap, but those structural checks do not
+independently validate factual correctness. The source-linked labels were manually checked against the
+official pages named in `packs/claim-check/README.md`.
+
+The README proposes three small Ollama tags as demo candidates, not as a validated lineup. The
+repository plan assumes an Apple M2 with 8 GB. The candidate lineup and resolved model digests have
+not been recorded as reproducible evidence; a real multi-model calibration/review/evaluation, a live
+demo rehearsal and a recording remain outstanding. The backend pack validator now reports `OK` for
+both `code-review` and `claim-check`. Do not publish model rankings or describe the demo as validated
+until the live steps are completed.
 
 ## Integration checkpoints
 
@@ -176,11 +196,12 @@ The panel earns its place only if it measures better than simpler options, so we
 | 3 Weighted vote | Blind round, calibrated weights |
 | 4 Weighted plus judge | Adds the judge ruling |
 | 5 Debate, weighted, judge | Adds rounds 1 and 2 |
-| 6 Condition 5 plus tools | Adds tool grounding, if built |
+| 6 Condition 5 plus tools | Adds Semgrep grounding for review packs when available; rules tuned on the dev pack do not establish generalization |
+| 7 Debate with profile-assigned roles | Optional ablation against condition 5 on review packs |
 
 Metrics per condition: precision, recall, F1 and false-positive rate on clean items, each with a 95% interval. Also report how often a debate round moved a model toward the right answer versus the wrong one.
 
-**What we claim.** If conditions 4 to 6 do not beat condition 1, the README says so and presents Quorum as a tool for surfacing disagreement and profiling local models. Published work found that multi-agent debate often fails to beat simple baselines, so a null result is plausible. The corpus is synthetic (mutation-seeded) and small, and the README states the sample size next to every weight.
+**What we claim.** If conditions 4 to 7 do not beat condition 1, where they are available, the README says so and presents Quorum as a tool for surfacing disagreement and profiling local models. Published work found that multi-agent debate often fails to beat simple baselines, so a null result is plausible. The corpus is synthetic (mutation-seeded) and small, and the README states the sample size next to every weight.
 
 Sources: [Zhang et al., Stop Overvaluing Multi-Agent Debate](https://arxiv.org/abs/2502.08788v3), [Du et al., Multiagent Debate](https://arxiv.org/pdf/2305.14325)
 
