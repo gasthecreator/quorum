@@ -71,7 +71,7 @@ models and nothing measured with them may be published. Hand-made seed packs liv
 | `cluster.py` | B5 | Groups findings by file and line overlap, scores `sum(weight x confidence)` |
 | `calibrate.py`, `weights.py`, `stats.py` | B7 | Per-category Wilson lower bound; `weight = max(lower, 0.05)` |
 | `export.py` | B14 | Markdown and self-contained HTML transcript of a finished run |
-| `evaluate.py` | B8 | Six conditions on the held-out split, CSV and JSON |
+| `evaluate.py` | B8 | Six baseline conditions plus optional role condition 7, CSV and JSON |
 | `api.py`, `streams.py`, `cli.py` | B9 | Endpoints, replayable SSE, CLI |
 
 Design decisions worth knowing:
