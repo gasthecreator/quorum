@@ -123,12 +123,14 @@ def build_tally(
                                      weight_source=src, finding_id=f.id))
             best = max(sup, key=lambda s: s.weight * s.confidence)
             bf = g.members[best.model_id]
+            fix = next((g.members[x.model_id].fix for x in sorted(
+                sup, key=lambda z: -z.weight * z.confidence) if g.members[x.model_id].fix), "")
             share = min(1.0, sum(s.weight for s in sup) / total) if total else 0.0
             clusters.append(Cluster(
                 id=f"k{i}", kind="finding", category=category, file=g.file, line_start=g.start,
                 line_end=g.end, severity=max((f.severity for f in g.members.values()),
                                              key=["low", "medium", "high", "critical"].index),
-                claim=bf.claim, evidence=bf.evidence, supporters=sup,
+                claim=bf.claim, evidence=bf.evidence, supporters=sup, fix=fix,
                 weighted_score=sum(s.weight * s.confidence for s in sup), total_weight=total,
                 support_share=share, vote_accept=share > threshold,
                 tool_verified=any(f.tool_verified for f in g.members.values())))

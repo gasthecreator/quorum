@@ -11,13 +11,15 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CONTRACT_VERSION = "1.0.0"
+CONTRACT_VERSION = "1.1.0"
 
 Verdict = Literal["issue", "no_issue", "true", "false", "unsure"]
 Severity = Literal["low", "medium", "high", "critical"]
 StopReason = Literal["consensus", "stalemate", "max_rounds", "budget"]
 Mode = Literal["review", "claim"]
-Provider = Literal["ollama", "openai_compat", "fake"]
+Provider = Literal["ollama", "openai_compat", "digitalocean", "fake"]
+Locality = Literal["local", "hosted"]
+Escalate = Literal["auto", "always"]
 ModelStatus = Literal["registered", "calibrating", "ready", "unavailable", "error"]
 JobStatus = Literal["queued", "running", "done", "error"]
 WeightSource = Literal["measured", "pooled", "default"]
@@ -45,6 +47,7 @@ class FindingDraft(Strict):
     severity: Severity = "medium"
     claim: str = Field(max_length=600)
     evidence: str = Field(default="", max_length=1200)
+    fix: str = Field(default="", max_length=1200, description="Suggested replacement code, if any")
 
 
 class Finding(FindingDraft):
@@ -96,6 +99,14 @@ class CorpusItem(Strict):
 # --------------------------------------------------------------------------- debater output
 
 
+class Critique(Strict):
+    """Rounds 1 and 2: a structured critique of the other panelists' latest answers."""
+
+    strongest: str = Field(default="", max_length=500, description="Which message is strongest, and why")
+    biggest_blind_spot: str = Field(default="", max_length=500)
+    missed_by_all: str = Field(default="", max_length=500, description="What did everyone miss")
+
+
 class DebaterOutput(Strict):
     """The JSON a debating model must return, every round."""
 
@@ -104,6 +115,11 @@ class DebaterOutput(Strict):
     changed: bool = False
     changed_reason: str = Field(default="", max_length=800)
     text: str = Field(default="", max_length=2000)
+    critique: Critique | None = Field(default=None, description="Asked for in rounds 1 and 2 only")
+
+
+class FramerOutput(Strict):
+    restatement: str = Field(max_length=1200)
 
 
 class JudgeRulingDraft(Strict):
@@ -115,6 +131,7 @@ class JudgeRulingDraft(Strict):
 class JudgeOutput(Strict):
     rulings: list[JudgeRulingDraft]
     reason: str = Field(default="", max_length=1200)
+    recommendation: str = Field(default="", max_length=600, description="One direct sentence")
 
 
 # --------------------------------------------------------------------------- tally / verdict
@@ -141,6 +158,7 @@ class Cluster(Strict):
     claim: str
     evidence: str = ""
     supporters: list[Supporter]
+    fix: str = ""
     weighted_score: float = Field(description="sum(weight * confidence) over supporters")
     total_weight: float = Field(description="Sum of the weights of all answering debaters")
     support_share: float = Field(
@@ -172,6 +190,48 @@ class FinalVerdict(Strict):
     summary: str
 
 
+class Agreement(Strict):
+    """A cluster every answering panelist backed."""
+
+    cluster_id: str | None = Field(default=None, description="None when the panel agreed there is nothing to flag")
+    claim: str
+    aliases: list[str]
+
+
+class ClashSide(Strict):
+    aliases: list[str]
+    argument: str = ""
+
+
+class Clash(Strict):
+    """A cluster the panel split on. Both sides are shown."""
+
+    cluster_id: str
+    claim: str
+    for_side: ClashSide
+    against_side: ClashSide
+
+
+class BlindSpot(Strict):
+    alias: str
+    kind: Literal["biggest_blind_spot", "missed_by_all"]
+    text: str
+
+
+class Recommendation(Strict):
+    verdict: Verdict
+    text: str
+    confidence: float = Field(
+        ge=0, le=1,
+        description="weight x confidence of panelists who agree with the verdict / total weight")
+
+
+class NextStep(Strict):
+    cluster_id: str | None = None
+    text: str
+    patch: str | None = Field(default=None, description="Suggested replacement code, when a panelist gave one")
+
+
 class Usage(Strict):
     calls: int = 0
     prompt_tokens: int = 0
@@ -190,9 +250,37 @@ class RunStarted(Strict):
     aliases: dict[str, str]
     judge_model_id: str
     max_rounds: int
+    escalate: Escalate
+    frame: bool
     input_flags: list[str] = Field(
         default_factory=list, description="Suspected prompt-injection patterns found in the input"
     )
+
+
+class Framed(Strict):
+    """A neutral restatement of the input, produced before round 0 so a leading prompt cannot steer
+    every model the same way. Debaters see it next to the original, never instead of it."""
+
+    model_id: str
+    restatement: str
+    error: str | None = None
+    input_flags: list[str] = Field(default_factory=list)
+
+
+class Escalated(Strict):
+    reason: Literal["disagreement", "low_confidence"]
+    detail: str
+    first_pass_model_ids: list[str]
+    added_model_ids: list[str]
+    agreement: float
+
+
+class FinishedEarly(Strict):
+    reason: str
+    model_ids: list[str]
+    agreement: float
+    min_confidence: float
+    calls_saved: int = Field(description="Lower bound: one blind call per model not consulted, plus the judge")
 
 
 class RoundStarted(Strict):
@@ -208,6 +296,7 @@ class ModelMessage(Strict):
     changed: bool
     changed_reason: str
     text: str
+    critique: Critique | None = None
     error: str | None = Field(default=None, description="Set when the model failed to answer")
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -235,6 +324,8 @@ class JudgeRuling(Strict):
     reason: str
     injection_flags: list[str] = Field(default_factory=list)
     error: str | None = None
+    skipped: bool = Field(default=False, description="True when the early-finish path skipped the judge")
+    recommendation: str = Field(default="", description="The judge's one-sentence recommendation, if given")
 
 
 class Final(Strict):
@@ -243,6 +334,11 @@ class Final(Strict):
     confirmed_findings: list[Cluster]
     disputed_findings: list[Cluster]
     dissent: list[Dissent]
+    agreements: list[Agreement]
+    clashes: list[Clash]
+    blind_spots: list[BlindSpot]
+    recommendation: Recommendation
+    next_step: NextStep | None = None
     usage: Usage
 
 
@@ -253,6 +349,9 @@ class ErrorEvent(Strict):
 
 RUN_EVENT_MODELS: dict[str, type[BaseModel]] = {
     "run_started": RunStarted,
+    "framed": Framed,
+    "escalated": Escalated,
+    "finished_early": FinishedEarly,
     "round_started": RoundStarted,
     "model_message": ModelMessage,
     "round_finished": RoundFinished,
@@ -323,6 +422,7 @@ class ModelInfo(Strict):
     family: str
     license: str
     open_weight: bool
+    locality: Locality
     status: ModelStatus
     status_detail: str = ""
     installed: bool | None = Field(default=None, description="Ollama only: tag is pulled locally")
@@ -332,14 +432,17 @@ class ModelCreate(Strict):
     provider: Provider
     tag: str = Field(min_length=1, max_length=200)
     base_url: str | None = Field(
-        default=None, description="Required for openai_compat; e.g. http://127.0.0.1:1234/v1"
-    )
+        default=None,
+        description="Required for openai_compat, e.g. http://127.0.0.1:1234/v1. "
+        "digitalocean defaults to https://inference.do-ai.run/v1")
     api_key_env: str | None = Field(
         default=None, description="Name of an environment variable holding the key. Never the key."
     )
     family: str | None = None
     license: str | None = None
     open_weight: bool | None = None
+    locality: Locality | None = Field(
+        default=None, description="Inferred from the host when omitted; digitalocean is always hosted")
     calibrate: bool = True
     packs: list[str] | None = Field(default=None, description="Packs to calibrate; default all")
 
@@ -359,6 +462,14 @@ class RunRequest(Strict):
         default=None, description="Optional category hint used to pick weights"
     )
     seed: int | None = None
+    escalate: Escalate = Field(
+        default="always",
+        description="always: full debate. auto: best model + best other-family model first; "
+        "full debate only if they disagree or either is unsure")
+    frame: bool | None = Field(
+        default=None,
+        description="Run the framer before round 0. Default: true for escalate=always, false for auto "
+        "(so an easy input costs exactly 2 model calls)")
 
 
 class RunCreated(Strict):

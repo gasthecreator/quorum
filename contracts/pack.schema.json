@@ -1,0 +1,182 @@
+{
+  "corpus_item": {
+    "$defs": {
+      "ClaimLabel": {
+        "additionalProperties": false,
+        "properties": {
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
+          "truth": {
+            "title": "Truth",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "truth",
+          "source_url"
+        ],
+        "title": "ClaimLabel",
+        "type": "object"
+      },
+      "ReviewLabel": {
+        "additionalProperties": false,
+        "properties": {
+          "has_issue": {
+            "title": "Has Issue",
+            "type": "boolean"
+          },
+          "issue_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Issue Category"
+          },
+          "lines": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "1-based inclusive line numbers of the corpus item's `input`",
+            "title": "Lines"
+          }
+        },
+        "required": [
+          "has_issue"
+        ],
+        "title": "ReviewLabel",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "category": {
+        "title": "Category",
+        "type": "string"
+      },
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "input": {
+        "title": "Input",
+        "type": "string"
+      },
+      "label": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ReviewLabel"
+          },
+          {
+            "$ref": "#/$defs/ClaimLabel"
+          }
+        ],
+        "title": "Label"
+      }
+    },
+    "required": [
+      "id",
+      "category",
+      "input",
+      "label"
+    ],
+    "title": "CorpusItem",
+    "type": "object"
+  },
+  "pack_json": {
+    "additionalProperties": false,
+    "properties": {
+      "categories": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Categories",
+        "type": "array"
+      },
+      "category_descriptions": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "title": "Category Descriptions",
+        "type": "object"
+      },
+      "corpus": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "description": "Paths relative to the pack directory",
+        "propertyNames": {
+          "enum": [
+            "calibration",
+            "heldout"
+          ]
+        },
+        "title": "Corpus",
+        "type": "object"
+      },
+      "corpus_counts": {
+        "additionalProperties": {
+          "type": "integer"
+        },
+        "description": "Filled by the API",
+        "title": "Corpus Counts",
+        "type": "object"
+      },
+      "description": {
+        "default": "",
+        "title": "Description",
+        "type": "string"
+      },
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "modes": {
+        "items": {
+          "enum": [
+            "review",
+            "claim"
+          ],
+          "type": "string"
+        },
+        "title": "Modes",
+        "type": "array"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "categories",
+      "modes",
+      "corpus"
+    ],
+    "title": "Pack",
+    "type": "object"
+  }
+}

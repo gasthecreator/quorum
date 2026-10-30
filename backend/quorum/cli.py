@@ -22,6 +22,7 @@ from .api import AppState
 from .calibrate import calibrate_many
 from .config import Settings
 from .evaluate import run_eval
+from .export import to_html, to_markdown
 from .registry import RegistryError
 from .schemas import EvalRequest, ModelCreate, RunRequest
 from .weights import WeightBook
@@ -63,6 +64,13 @@ def _fmt_event(event: str, d: dict) -> str | None:
         al = ", ".join(f"{a}={m}" for m, a in d["aliases"].items())
         flags = f"  !! input looks like it is steering the models: {d['input_flags']}" if d["input_flags"] else ""
         return f"Run {d['run_id']}  [{d['pack']}]  {al}  judge={d['judge_model_id']}{flags}"
+    if event == "framed":
+        return ("Framed: " + (d["restatement"] if d["restatement"] else f"(failed: {d['error']})")
+                + (f"  !! steering text in the framing: {d['input_flags']}" if d["input_flags"] else ""))
+    if event == "escalated":
+        return (f"  >> escalated ({d['reason']}): {d['detail']} adding {len(d['added_model_ids'])} model(s)")
+    if event == "finished_early":
+        return f"\nfinished early: {d['reason']} ({d['calls_saved']} model calls saved)"
     if event == "round_started":
         return f"\n-- round {d['round']}{' (blind)' if d['round'] == 0 else ''} --"
     if event == "model_message":
@@ -71,7 +79,10 @@ def _fmt_event(event: str, d: dict) -> str | None:
         flip = f"  << CHANGED: {d['changed_reason']}" if d["changed"] else (
             f"  (kept; {d['changed_reason']})" if d["changed_reason"] else "")
         err = f"  ERROR: {d['error']}" if d["error"] else ""
-        return f"  {d['alias']}  {p['verdict']:<8} {p['confidence']:.2f}  {where}{flip}{err}"
+        crit = d.get("critique")
+        extra = (f"\n       critique: strongest={crit['strongest'][:60]} | blind spot="
+                 f"{crit['biggest_blind_spot'][:60]} | missed={crit['missed_by_all'][:60]}") if crit else ""
+        return f"  {d['alias']}  {p['verdict']:<8} {p['confidence']:.2f}  {where}{flip}{err}{extra}"
     if event == "round_finished":
         return f"  agreement {d['agreement']:.2f}"
     if event == "stopped":
@@ -87,7 +98,8 @@ def _fmt_event(event: str, d: dict) -> str | None:
         return "\n".join(lines)
     if event == "judge_ruling":
         lines = [f"\nJudge ({d['judge_model_id']}): "
-                 + ("OVERRIDES the weighted vote" if d["overrides_vote"] else "agrees with the vote")]
+                 + ("skipped (early finish)" if d["skipped"] else
+                    "OVERRIDES the weighted vote" if d["overrides_vote"] else "agrees with the vote")]
         for r in d["rulings"]:
             lines.append(f"  {r['cluster_id']}: {'accept' if r['accept'] else 'reject'}"
                          + (f"  (override) {r['reason']}" if r["overrides_vote"] else ""))
@@ -103,6 +115,19 @@ def _fmt_event(event: str, d: dict) -> str | None:
             out.append(f"  disputed  L{c['line_start']}-{c['line_end']} [{c['category']}] {c['claim']}")
         for x in d["dissent"]:
             out.append(f"  dissent   {x['alias']}: {x['verdict']} ({x['confidence']:.2f})")
+        rec = d["recommendation"]
+        out.append(f"  recommendation ({rec['confidence']:.2f}): {rec['text']}")
+        if d.get("next_step"):
+            out.append(f"  next step: {d['next_step']['text']}")
+            if d["next_step"].get("patch"):
+                out.append(f"    patch: {d['next_step']['patch']}")
+        for a in d["agreements"]:
+            out.append(f"  agreed    {a['claim']} ({','.join(a['aliases'])})")
+        for c in d["clashes"]:
+            out.append(f"  clash     {c['claim']}: for {','.join(c['for_side']['aliases'])} / "
+                       f"against {','.join(c['against_side']['aliases'])}")
+        for b in d["blind_spots"]:
+            out.append(f"  blind spot ({b['alias']}): {b['text']}")
         u = d["usage"]
         out.append(f"  {u['calls']} model calls, {u['prompt_tokens'] + u['completion_tokens']} tokens, "
                    f"{u['elapsed_ms'] / 1000:.1f}s")
@@ -121,7 +146,8 @@ async def _review(a) -> int:
         raise SystemExit("no models available. Pull one with Ollama or set QUORUM_ENABLE_FAKE=1")
     judge = _resolve(state, [a.judge])[0] if a.judge else None
     req = RunRequest(pack=a.pack, input=text, model_ids=models, judge_model_id=judge,
-                     max_rounds=a.rounds, seed=a.seed)
+                     max_rounds=a.rounds, seed=a.seed, escalate=a.escalate,
+                     frame=False if a.no_frame else None)
     run_id = uuid.uuid4().hex[:10]
     events: list[dict] = []
 
@@ -140,6 +166,13 @@ async def _review(a) -> int:
         await state.registry.aclose()
     if a.json:
         print(json.dumps(events, indent=2))
+    if a.export:
+        run = {"run_id": run_id, "request": req.model_dump(), "status": "done",
+               "events": [{"seq": i, "event": e["event"], "data": e["data"]}
+                          for i, e in enumerate(events, 1)]}
+        out = Path(a.export)
+        out.write_text(to_html(run) if out.suffix == ".html" else to_markdown(run))
+        print(f"exported: {out}")
     return 0
 
 
@@ -212,7 +245,7 @@ async def _models(a) -> int:
         try:
             info = await state.registry.add(ModelCreate(
                 provider=a.provider, tag=a.tag, base_url=a.base_url, api_key_env=a.api_key_env,
-                family=a.family, license=a.license,
+                family=a.family, license=a.license, locality=a.locality,
                 open_weight=True if a.open_weight else None, calibrate=False))
         except RegistryError as e:
             print(f"error: {e.message}", file=sys.stderr)
@@ -220,7 +253,7 @@ async def _models(a) -> int:
         print(f"added {info.id} ({info.family}, {info.license}). Run `quorum calibrate --models {info.tag}`")
         return 0
     for m in await state.registry.list():
-        print(f"{m.id:<42} {m.family:<14} {m.license:<28} open_weight={m.open_weight!s:<5} "
+        print(f"{m.id:<42} {m.family:<14} {m.license:<28} {m.locality:<6} open_weight={m.open_weight!s:<5} "
               f"{m.status}{' - ' + m.status_detail if m.status_detail else ''}")
     await state.registry.aclose()
     return 0
@@ -254,6 +287,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--rounds", type=int, default=2)
     r.add_argument("--seed", type=int)
     r.add_argument("--json", action="store_true")
+    r.add_argument("--escalate", choices=["auto", "always"], default="always",
+                   help="auto: two models first, full debate only if they disagree")
+    r.add_argument("--no-frame", action="store_true", help="skip the neutral framing call")
+    r.add_argument("--export", help="write a transcript to this .md or .html file")
 
     c = sub.add_parser("calibrate")
     c.add_argument("--models", required=True)
@@ -271,11 +308,12 @@ def main(argv: list[str] | None = None) -> int:
 
     m = sub.add_parser("models")
     m.add_argument("action", nargs="?", default="list", choices=["list", "add"])
-    m.add_argument("--provider", choices=["ollama", "openai_compat"])
+    m.add_argument("--provider", choices=["ollama", "openai_compat", "digitalocean"])
     m.add_argument("--tag")
     m.add_argument("--base-url", dest="base_url")
     m.add_argument("--api-key-env", dest="api_key_env")
     m.add_argument("--family")
+    m.add_argument("--locality", choices=["local", "hosted"])
     m.add_argument("--license")
     m.add_argument("--open-weight", action="store_true", dest="open_weight")
 

@@ -5,17 +5,19 @@ from __future__ import annotations
 import asyncio
 import uuid
 from contextlib import asynccontextmanager
+from typing import Literal
 
 from fastapi import FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from . import __version__
 from .calibrate import calibrate_many, now
 from .config import Settings
 from .engine import Debate, DebateError
 from .evaluate import run_eval
+from .export import to_html, to_markdown
 from .packs import PackError, PackStore
 from .providers.ollama import ollama_version
 from .registry import Registry, RegistryError
@@ -274,6 +276,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if log is None:
             raise ApiException(404, "unknown_run", f"No run '{run_id}'.")
         return _sse(log, last_event_id, after)
+
+    @app.get("/runs/{run_id}/export")
+    async def export_run(run_id: str, format: Literal["md", "html"] = "md"):
+        rec = state.store.get_run(run_id)
+        if rec is None:
+            raise ApiException(404, "unknown_run", f"No run '{run_id}'.")
+        if rec["status"] == "running":
+            raise ApiException(409, "run_not_finished", "The run is still going; export it when it ends.")
+        run = {"run_id": run_id, "request": rec["request"], "status": rec["status"],
+               "events": state.store.events(run_id)}
+        body, media = ((to_markdown(run), "text/markdown") if format == "md"
+                       else (to_html(run), "text/html"))
+        return Response(body, media_type=f"{media}; charset=utf-8", headers={
+            "Content-Disposition": f'attachment; filename="quorum-{run_id}.{format}"'})
 
     @app.get("/runs/{run_id}", response_model=RunSummary)
     async def get_run(run_id: str):
