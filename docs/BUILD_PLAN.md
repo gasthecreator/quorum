@@ -107,7 +107,7 @@ Everything runs without the UI: `quorum review file.diff`, `quorum calibrate`, `
 | B5 Clustering and tally | Group findings across models by file, line overlap and category; cluster score = sum of weight times confidence | The same bug flagged by three models becomes one cluster |
 | B6 Judge | Anonymized prompt, sees the tally, overrides only with a stated reason, guard against instructions hidden in the code | Override flag and reason appear in judge\_ruling |
 | B7 Calibration | Runs a pack's calibration corpus; writes profiles with n and the Wilson lower bound; weight = max(lower bound, 0.05) | GET /profiles returns real numbers for every model and category |
-| B8 Evaluation | Held-out split under the 6 conditions in Evaluation; CSV and JSON | GET /eval/latest returns the table |
+| B8 Evaluation | Held-out split under six baseline conditions and optional role condition 7; CSV and JSON | GET /eval/latest returns the table |
 | B9 API and CLI | All endpoints and SSE streams in the contract | Frontend live mode works |
 | B10 Stretch: tool grounding | Semgrep or test runs; a tool-confirmed finding outranks any vote | Findings tagged `tool_verified` |
 
@@ -196,12 +196,12 @@ The panel earns its place only if it measures better than simpler options, so we
 | 3 Weighted vote | Blind round, calibrated weights |
 | 4 Weighted plus judge | Adds the judge ruling |
 | 5 Debate, weighted, judge | Adds rounds 1 and 2 |
-| 6 Condition 5 plus tools | Adds tool grounding, if built |
+| 6 Condition 5 plus tools | Adds Semgrep grounding for review packs when available; rules tuned on the dev pack do not establish generalization |
 | 7 Debate with profile-assigned roles | Optional ablation against condition 5 on review packs |
 
 Metrics per condition: precision, recall, F1 and false-positive rate on clean items, each with a 95% interval. Also report how often a debate round moved a model toward the right answer versus the wrong one.
 
-**What we claim.** If conditions 4 to 6 do not beat condition 1, the README says so and presents Quorum as a tool for surfacing disagreement and profiling local models. Published work found that multi-agent debate often fails to beat simple baselines, so a null result is plausible. The corpus is synthetic (mutation-seeded) and small, and the README states the sample size next to every weight.
+**What we claim.** If conditions 4 to 7 do not beat condition 1, where they are available, the README says so and presents Quorum as a tool for surfacing disagreement and profiling local models. Published work found that multi-agent debate often fails to beat simple baselines, so a null result is plausible. The corpus is synthetic (mutation-seeded) and small, and the README states the sample size next to every weight.
 
 Sources: [Zhang et al., Stop Overvaluing Multi-Agent Debate](https://arxiv.org/abs/2502.08788v3), [Du et al., Multiagent Debate](https://arxiv.org/pdf/2305.14325)
 

@@ -1,4 +1,4 @@
-"""Held-out evaluation (B8): six conditions on items no model was calibrated on."""
+"""Held-out evaluation (B8): six baselines and optional role condition 7 on unseen items."""
 
 from __future__ import annotations
 
