@@ -164,11 +164,11 @@ independently validate factual correctness. The source-linked labels were manual
 official pages named in `packs/claim-check/README.md`.
 
 The README proposes three small Ollama tags as demo candidates, not as a validated lineup. The
-repository plan assumes an Apple M2 with 8 GB. The current environment has only one installed model,
-not the documented three-family panel; resolved candidate digests, a real multi-model
-calibration/review/evaluation, a live demo rehearsal and a recording remain outstanding. The backend
-pack validator now reports `OK` for both `code-review` and `claim-check`. Do not publish model rankings
-or describe the demo as validated until the live steps are completed.
+repository plan assumes an Apple M2 with 8 GB. The candidate lineup and resolved model digests have
+not been recorded as reproducible evidence; a real multi-model calibration/review/evaluation, a live
+demo rehearsal and a recording remain outstanding. The backend pack validator now reports `OK` for
+both `code-review` and `claim-check`. Do not publish model rankings or describe the demo as validated
+until the live steps are completed.
 
 ## Integration checkpoints
 
