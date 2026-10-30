@@ -18,7 +18,7 @@ def _env_bool(name: str, default: bool = False) -> bool:
 class Settings:
     host: str = "127.0.0.1"
     port: int = 8787
-    cors_origins: tuple[str, ...] = ("http://127.0.0.1:5173",)
+    cors_origins: tuple[str, ...] = ("http://127.0.0.1:5173", "http://localhost:5173")
     home: Path = field(default_factory=lambda: Path.home() / ".quorum")
     pack_dirs: tuple[Path, ...] = (REPO_ROOT / "packs", REPO_ROOT / "backend" / "dev_packs")
     models_yaml: Path = REPO_ROOT / "config" / "models.yaml"

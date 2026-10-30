@@ -448,8 +448,8 @@ class EvalResult(Strict):
     judge_model_id: str
     max_rounds: int
     n_items: int
-    n_buggy_or_true: int
-    n_clean_or_false: int
+    n_positive: int = Field(description="Buggy diffs, or false claims")
+    n_negative: int = Field(description="Clean controls, or true claims")
     conditions: list[ConditionResult]
     debate_movement: DebateMovement
     notes: list[str] = Field(default_factory=list)

@@ -147,10 +147,10 @@ def debate_messages(
     peer_blocks = "\n".join(_fence(f"PEER {alias}", nonce, _compact(m)) for alias, m in peers)
     parts = [
         f"Round {round_no}. Re-read the input and the other panelists' latest answers.",
-        "Keep your position unless a peer gives concrete evidence (a line number and a reason, or a "
-        "checkable fact) that you are wrong. Agreement without evidence is not a reason to change.",
-        'If you change your verdict or your findings, set "changed": true and give the evidence in '
-        '"changed_reason". Otherwise set "changed": false and "changed_reason": "".',
+        ("Keep your position unless a peer gives concrete evidence (a line number and a reason, or a "
+         "checkable fact) that you are wrong. Agreement without evidence is not a reason to change."),
+        ('If you change your verdict or your findings, set "changed": true and give the evidence in '
+         '"changed_reason". Otherwise set "changed": false and "changed_reason": "".'),
         input_block(mode, text, nonce),
     ]
     if history_summary:

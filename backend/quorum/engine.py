@@ -143,11 +143,11 @@ class Debate:
 
     # ------------------------------------------------------------------ sanitising
 
-    def _sanitize(self, ctx: Ctx, alias: str, rnd: int, out: DebaterOutput) -> State:
+    def sanitize(self, mode: str, alias: str, rnd: int, out: DebaterOutput) -> State:
         v = out.position.verdict
-        allowed = {"issue", "no_issue", "unsure"} if ctx.mode == "review" else {"true", "false", "unsure"}
+        allowed = {"issue", "no_issue", "unsure"} if mode == "review" else {"true", "false", "unsure"}
         findings: list[Finding] = []
-        if ctx.mode == "review":
+        if mode == "review":
             for i, f in enumerate(out.findings, 1):
                 if f.claim.strip():
                     findings.append(Finding(**f.model_dump(), id=f"{alias}{rnd}-{i}"))
@@ -201,6 +201,15 @@ class Debate:
             lines.append(f"Round {r}: " + "; ".join(parts))
         return "\n".join(lines)
 
+    async def blind_one(self, pack: Pack, mode: str, text: str, model_id: str,
+                        nonce: str | None = None) -> tuple[State | None, CallResult]:
+        """One independent answer from one model (calibration, evaluation baselines)."""
+        msgs = prompts.blind_messages(pack, mode, text, nonce or prompts.new_nonce())
+        res = await self.runner.call(self.registry.provider(model_id), msgs, DebaterOutput,
+                                     prompts.debater_schema())
+        state = self.sanitize(mode, "X", 0, res.output) if res.output else None
+        return state, res
+
     # ------------------------------------------------------------------ rounds
 
     async def _round(self, ctx: Ctx, rnd: int, states: dict[str, State],
@@ -241,7 +250,7 @@ class Debate:
                     completion_tokens=res.completion_tokens))
                 continue
             errors.pop(m, None)
-            new = self._sanitize(ctx, alias, rnd, res.output)
+            new = self.sanitize(ctx.mode, alias, rnd, res.output)
             changed, reason = False, ""
             if rnd > 0:
                 prev = states[m]

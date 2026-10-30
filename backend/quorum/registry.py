@@ -19,7 +19,7 @@ from .providers.openai_compat import OpenAICompatProvider
 from .schemas import ModelCreate, ModelInfo
 from .store import Store
 
-FAKE_TAGS = ["fake:sharp", "fake:sloppy", "fake:stubborn", "fake:judge-skeptic", "fake:broken"]
+FAKE_TAGS = ["sharp", "sloppy", "stubborn", "judge-skeptic", "broken"]
 
 # Matched against the license text Ollama returns from /api/show.
 LICENSE_PATTERNS: list[tuple[str, str]] = [
@@ -100,7 +100,7 @@ class Registry:
             for tag in FAKE_TAGS:
                 rec = {
                     "id": model_id("fake", tag), "provider": "fake", "tag": tag, "base_url": None,
-                    "api_key_env": None, "family": f"simulated-{tag.split(':')[1]}",
+                    "api_key_env": None, "family": f"simulated-{tag}",
                     "license": "n/a (simulated, not a language model)", "open_weight": False,
                     "status": "registered", "status_detail": "Simulated model for offline testing",
                     "source": "fake",

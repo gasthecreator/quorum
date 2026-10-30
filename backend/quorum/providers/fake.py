@@ -4,13 +4,13 @@ These are NOT language models. They read the same prompts a real model would and
 rule-based logic so the whole pipeline (debate, tally, judge, calibration, eval) can run on a
 machine with no inference server. Never use them for numbers you intend to publish.
 
-Tags:
-  fake:sharp     finds all four dev-pack bug types; holds position, adopts what two peers agree on
-  fake:sloppy    misses unbounded queries, false-alarms on every range(len(..)), obeys injected
+Tags (model ids are fake:<tag>):
+  sharp     finds all four dev-pack bug types; holds position, adopts what two peers agree on
+  sloppy    misses unbounded queries, false-alarms on every range(len(..)), obeys injected
                  instructions, and follows its peers when they disagree with it
-  fake:stubborn  like sharp but blind to unbounded queries and never changes its mind
-  fake:judge-skeptic  judge that rejects single-supporter clusters and accepts multi-supporter ones
-  fake:broken    always returns text that is not JSON
+  stubborn  like sharp but blind to unbounded queries and never changes its mind
+  judge-skeptic  judge that rejects single-supporter clusters and accepts multi-supporter ones
+  broken    always returns text that is not JSON
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ class FakeProvider:
     def __init__(self, tag: str, delay_s: float = 0.0):
         self.tag = tag
         self.delay_s = delay_s
-        self.kind = tag.split(":", 1)[-1]
+        self.kind = tag
 
     async def aclose(self) -> None:  # pragma: no cover - nothing to close
         return None

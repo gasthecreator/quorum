@@ -11,9 +11,6 @@ from quorum.store import Store
 
 DEV_PACKS = Path(__file__).resolve().parents[1] / "dev_packs"
 
-SHARP, SLOPPY, STUBBORN = "fake:fake:sharp", "fake:fake:sloppy", "fake:fake:stubborn"
-
-
 @pytest.fixture
 def settings(tmp_path):
     s = Settings()
@@ -49,4 +46,4 @@ def debate(registry, packs, store, settings):
 
 
 def ids(registry):
-    return {m["tag"].split(":")[1]: m["id"] for m in registry.store.list_models()}
+    return {m["tag"]: m["id"] for m in registry.store.list_models()}
