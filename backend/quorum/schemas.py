@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CONTRACT_VERSION = "1.1.0"
+CONTRACT_VERSION = "1.2.0"
 
 Verdict = Literal["issue", "no_issue", "true", "false", "unsure"]
 Severity = Literal["low", "medium", "high", "critical"]
@@ -137,6 +137,18 @@ class JudgeOutput(Strict):
 # --------------------------------------------------------------------------- tally / verdict
 
 
+class ToolFinding(Strict):
+    """What a static-analysis tool reported. Line numbers are lines of the pasted input."""
+
+    tool: str
+    rule_id: str
+    category: str
+    file: str = ""
+    line_start: int = Field(ge=0)
+    line_end: int = Field(ge=0)
+    claim: str
+
+
 class Supporter(Strict):
     model_id: str
     alias: str
@@ -165,7 +177,11 @@ class Cluster(Strict):
         ge=0, le=1, description="supporters' weight / total_weight"
     )
     vote_accept: bool = Field(description="Weighted vote outcome, before the judge")
-    tool_verified: bool = False
+    tool_verified: bool = Field(
+        default=False,
+        description="A static-analysis tool confirmed it. Such a cluster is always accepted, and the "
+        "judge cannot reject it. May have no supporters (the tool found what no model did).")
+    tool_rule: str | None = None
 
 
 class ClusterRuling(Strict):
@@ -224,6 +240,9 @@ class Recommendation(Strict):
     confidence: float = Field(
         ge=0, le=1,
         description="weight x confidence of panelists who agree with the verdict / total weight")
+    tool_verified: bool = Field(
+        default=False, description="A static-analysis tool confirmed at least one finding behind "
+        "this verdict. Confidence still reflects the panel only, so it can be low or 0")
 
 
 class NextStep(Strict):
@@ -252,6 +271,7 @@ class RunStarted(Strict):
     max_rounds: int
     escalate: Escalate
     frame: bool
+    ground: bool = False
     input_flags: list[str] = Field(
         default_factory=list, description="Suspected prompt-injection patterns found in the input"
     )
@@ -281,6 +301,16 @@ class FinishedEarly(Strict):
     agreement: float
     min_confidence: float
     calls_saved: int = Field(description="Lower bound: one blind call per model not consulted, plus the judge")
+
+
+class Grounded(Strict):
+    """Static-analysis results, sent after the debate stops and before `tally`. Only when ground=true."""
+
+    tool: str
+    available: bool
+    findings: list[ToolFinding]
+    error: str | None = None
+    duration_ms: int = 0
 
 
 class RoundStarted(Strict):
@@ -350,6 +380,7 @@ class ErrorEvent(Strict):
 RUN_EVENT_MODELS: dict[str, type[BaseModel]] = {
     "run_started": RunStarted,
     "framed": Framed,
+    "grounded": Grounded,
     "escalated": Escalated,
     "finished_early": FinishedEarly,
     "round_started": RoundStarted,
@@ -412,6 +443,8 @@ class Health(Strict):
     ollama: OllamaHealth
     models: int
     fake_models_enabled: bool = False
+    grounding: dict[str, bool] = Field(
+        default_factory=dict, description="Static-analysis tools that are installed, e.g. {semgrep: true}")
 
 
 class ModelInfo(Strict):
@@ -462,6 +495,10 @@ class RunRequest(Strict):
         default=None, description="Optional category hint used to pick weights"
     )
     seed: int | None = None
+    ground: bool = Field(
+        default=False,
+        description="Run a static analyser (Semgrep) over the input. A tool-confirmed finding is "
+        "accepted regardless of the vote. Review packs only; a no-op if the tool is missing")
     escalate: Escalate = Field(
         default="always",
         description="always: full debate. auto: best model + best other-family model first; "

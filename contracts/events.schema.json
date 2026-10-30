@@ -1,5 +1,5 @@
 {
-  "contract_version": "1.1.0",
+  "contract_version": "1.2.0",
   "envelope": {
     "additionalProperties": false,
     "description": "One SSE frame: `id: <seq>`, `event: <event>`, `data: <json of data>`.",
@@ -354,8 +354,21 @@
               "title": "Supporters",
               "type": "array"
             },
+            "tool_rule": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Tool Rule"
+            },
             "tool_verified": {
               "default": false,
+              "description": "A static-analysis tool confirmed it. Such a cluster is always accepted, and the judge cannot reject it. May have no supporters (the tool found what no model did).",
               "title": "Tool Verified",
               "type": "boolean"
             },
@@ -535,6 +548,12 @@
             "text": {
               "title": "Text",
               "type": "string"
+            },
+            "tool_verified": {
+              "default": false,
+              "description": "A static-analysis tool confirmed at least one finding behind this verdict. Confidence still reflects the panel only, so it can be low or 0",
+              "title": "Tool Verified",
+              "type": "boolean"
             },
             "verdict": {
               "enum": [
@@ -798,6 +817,100 @@
         "restatement"
       ],
       "title": "Framed",
+      "type": "object"
+    },
+    "grounded": {
+      "$defs": {
+        "ToolFinding": {
+          "additionalProperties": false,
+          "description": "What a static-analysis tool reported. Line numbers are lines of the pasted input.",
+          "properties": {
+            "category": {
+              "title": "Category",
+              "type": "string"
+            },
+            "claim": {
+              "title": "Claim",
+              "type": "string"
+            },
+            "file": {
+              "default": "",
+              "title": "File",
+              "type": "string"
+            },
+            "line_end": {
+              "minimum": 0,
+              "title": "Line End",
+              "type": "integer"
+            },
+            "line_start": {
+              "minimum": 0,
+              "title": "Line Start",
+              "type": "integer"
+            },
+            "rule_id": {
+              "title": "Rule Id",
+              "type": "string"
+            },
+            "tool": {
+              "title": "Tool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool",
+            "rule_id",
+            "category",
+            "line_start",
+            "line_end",
+            "claim"
+          ],
+          "title": "ToolFinding",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Static-analysis results, sent after the debate stops and before `tally`. Only when ground=true.",
+      "properties": {
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "duration_ms": {
+          "default": 0,
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/ToolFinding"
+          },
+          "title": "Findings",
+          "type": "array"
+        },
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "available",
+        "findings"
+      ],
+      "title": "Grounded",
       "type": "object"
     },
     "judge_ruling": {
@@ -1174,6 +1287,11 @@
           "title": "Frame",
           "type": "boolean"
         },
+        "ground": {
+          "default": false,
+          "title": "Ground",
+          "type": "boolean"
+        },
         "input_flags": {
           "description": "Suspected prompt-injection patterns found in the input",
           "items": {
@@ -1328,8 +1446,21 @@
               "title": "Supporters",
               "type": "array"
             },
+            "tool_rule": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Tool Rule"
+            },
             "tool_verified": {
               "default": false,
+              "description": "A static-analysis tool confirmed it. Such a cluster is always accepted, and the judge cannot reject it. May have no supporters (the tool found what no model did).",
               "title": "Tool Verified",
               "type": "boolean"
             },

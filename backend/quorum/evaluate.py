@@ -103,7 +103,14 @@ async def run_eval(debate: Debate, req: EvalRequest, progress: Progress | None =
     if len({w for w, _ in pooled.values()}) == 1:
         notes.append("All models have the same pooled weight, so 'best single model' is arbitrary.")
 
-    outcomes: dict[int, list[str]] = {i: [] for i in range(1, 6)}
+    grounder = debate.grounder if mode == "review" else None
+    outcomes: dict[int, list[str]] = {i: [] for i in range(1, 7)}
+    tool_errors: list[str] = []
+    tool_results: list = []
+    if grounder is not None:  # one Semgrep run for the whole split; it is slow to start
+        tool_results = (await grounder.check_many([i.input for i in items])
+                        if hasattr(grounder, "check_many")
+                        else [await grounder.check(i.input) for i in items])
     toward_right = toward_wrong = neutral = 0
     total_steps = len(items)
 
@@ -151,6 +158,13 @@ async def run_eval(debate: Debate, req: EvalRequest, progress: Progress | None =
         # 5: full debate, reusing the same blind answers
         result = await debate.run(base, f"eval-{n}", noop_emit, blind=blind, weights=book)
         outcomes[5].append(_outcome(item, result.final.confirmed_findings if result.final else [], tol))
+        # 6: the same debate, plus static analysis (a tool-confirmed finding outranks the vote)
+        if grounder is not None and result.ctx is not None:
+            tools, terr = tool_results[n - 1]
+            if terr:
+                tool_errors.append(f"{item.id}: {terr}")
+            _, _, final6 = await debate.adjudicate(result.ctx, result.states, tools=tools)
+            outcomes[6].append(_outcome(item, final6.confirmed_findings, tol))
         # did debate move models toward the truth?
         if len(result.rounds) > 1:
             last = {m: s for r in result.rounds for m, s in r.items()}
@@ -169,9 +183,18 @@ async def run_eval(debate: Debate, req: EvalRequest, progress: Progress | None =
             progress(n, total_steps, item.id)
 
     conditions = [summarize(i, outcomes[i]) for i in range(1, 6)]
-    conditions.append(ConditionResult(
-        id=6, name=CONDITION_NAMES[6], available=False,
-        reason_unavailable="Tool grounding (stretch goal B10) is not built."))
+    if grounder is not None:
+        conditions.append(summarize(6, outcomes[6]))
+        notes.append(f"Condition 6 uses {grounder.name} with the rules in quorum/rules/python.yml. "
+                     "They were written with the dev pack's bug shapes in view, so on that pack "
+                     "condition 6 is not evidence; judge it only on a pack the rules never saw.")
+        if tool_errors:
+            notes.append(f"Tool could not analyse {len(tool_errors)} item(s): {tool_errors[0]}")
+    else:
+        conditions.append(ConditionResult(
+            id=6, name=CONDITION_NAMES[6], available=False,
+            reason_unavailable="Tool grounding applies to review packs and needs Semgrep installed."
+            if mode == "review" else "Tool grounding applies to review packs only."))
     result = EvalResult(
         id=uuid.uuid4().hex[:10], created_at=now(), pack=req.pack, model_ids=req.model_ids,
         judge_model_id=judge, max_rounds=req.max_rounds, n_items=len(outcomes[1]),

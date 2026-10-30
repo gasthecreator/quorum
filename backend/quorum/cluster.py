@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 
-from .schemas import Cluster, DebaterOutput, Finding, Supporter, Tally
+from .schemas import Cluster, DebaterOutput, Finding, Supporter, Tally, ToolFinding
 from .weights import WeightBook
 
 
@@ -76,6 +76,7 @@ def build_tally(
     category_hint: str | None,
     threshold: float,
     tol: int,
+    tool_findings: list[ToolFinding] | None = None,
 ) -> Tally:
     answering = list(outputs)
 
@@ -134,5 +135,27 @@ def build_tally(
                 weighted_score=sum(s.weight * s.confidence for s in sup), total_weight=total,
                 support_share=share, vote_accept=share > threshold,
                 tool_verified=any(f.tool_verified for f in g.members.values())))
+        _apply_tools(clusters, tool_findings or [], answering, pack_id, weights, tol)
         clusters.sort(key=lambda c: (-c.weighted_score, c.line_start))
     return Tally(clusters=clusters, threshold=threshold)
+
+
+def _apply_tools(clusters: list[Cluster], tools: list[ToolFinding], answering: list[str],
+                 pack_id: str, weights: WeightBook, tol: int) -> None:
+    """A tool-confirmed finding is accepted whatever the vote said. If no model raised it, it still
+    becomes a cluster, with no supporters."""
+    n_tool = 0
+    for tf in tools:
+        hit = next((c for c in clusters if c.kind == "finding" and spans_overlap(
+            (c.line_start, c.line_end), (tf.line_start, tf.line_end), tol)), None)
+        if hit is not None:
+            hit.tool_verified, hit.vote_accept = True, True
+            hit.tool_rule = hit.tool_rule or tf.rule_id
+            continue
+        n_tool += 1
+        clusters.append(Cluster(
+            id=f"t{n_tool}", kind="finding", category=tf.category, file=tf.file,
+            line_start=tf.line_start, line_end=tf.line_end, severity="high", claim=tf.claim,
+            evidence=f"{tf.tool} rule {tf.rule_id}", supporters=[], weighted_score=0.0,
+            total_weight=sum(weights.weight(m, pack_id, tf.category)[0] for m in answering),
+            support_share=0.0, vote_accept=True, tool_verified=True, tool_rule=tf.rule_id))

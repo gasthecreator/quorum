@@ -5,7 +5,7 @@ Python 3.11+, FastAPI, SQLite. Runs without the UI.
 ```bash
 cd backend
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/pytest -q                      # 60 tests, no model server needed
+.venv/bin/pytest -q                      # 70 tests, no model server needed
 .venv/bin/quorum serve                   # http://127.0.0.1:8787
 ```
 
@@ -81,6 +81,11 @@ Design decisions worth knowing:
   host, and always DigitalOcean). The DigitalOcean preset is the OpenAI-compatible adapter pointed at
   `https://inference.do-ai.run/v1` with the key read from `DIGITALOCEAN_MODEL_ACCESS_KEY` (our own
   name for the variable; override with `api_key_env`). It has not been called for real.
+- **Tool grounding (B10).** `--ground` / `ground: true` runs Semgrep (`pip install -e '.[grounding]'`)
+  with our own rules over the input and treats a hit as outranking the vote and the judge. Rules are
+  precision-first and Python-only. They were written with the dev pack's bug shapes in view, so the
+  eval's condition 6 on that pack proves nothing; test it on a pack the rules never saw. Eval
+  condition 6 is the same debate as condition 5 re-adjudicated with the tool results.
 - **Failure handling.** A model that fails to answer is carried over (or `unsure`) and excluded from
   the denominator; if none answer the run ends with an `error` event. Calibration refuses to write
   a profile if a third of the items got no usable answer.
@@ -97,5 +102,5 @@ Design decisions worth knowing:
   against an HTTP stand-in (`tests/fake_ollama.py`) and with mocked responses, never against a real
   model. First real run will need prompt tuning for small models.
 - **B16 roles and B17 MCP wrapper** (stretch) are not started.
-- **B10 tool grounding** (Semgrep, tests). Stretch; not started.
+- **B10** is Semgrep-only; running the code's tests is not built, and the rules cover the four dev-pack bug types.
 - The model lineup, parallelism and judge model wait on hardware (8 GB M2).

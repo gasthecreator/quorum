@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from . import prompts
 from .cluster import build_tally, finding_match
 from .config import Settings
+from .grounding import Grounder, default_grounder, timed_check
 from .packs import PackStore
 from .registry import Registry
 from .runner import CallResult, Runner
@@ -40,6 +41,7 @@ from .schemas import (
     FinishedEarly,
     Framed,
     FramerOutput,
+    Grounded,
     JudgeOutput,
     JudgeRuling,
     ModelMessage,
@@ -53,6 +55,7 @@ from .schemas import (
     RunStarted,
     Stopped,
     Tally,
+    ToolFinding,
     Usage,
 )
 from .store import Store
@@ -89,6 +92,7 @@ class Ctx:
     emit: Emit
     escalate: str = "always"
     frame: bool = True
+    ground: bool = False
     framing: str | None = None
     rng: random.Random = field(default_factory=random.Random)
     started: float = field(default_factory=time.monotonic)
@@ -114,6 +118,8 @@ class DebateResult:
     rounds: list[dict[str, State]]  # per round, only models that answered that round
     flips: list[dict]
     errors: dict[str, str]
+    states: dict[str, State] = field(default_factory=dict)
+    ctx: Ctx | None = None
 
 
 class DebateError(Exception):
@@ -124,9 +130,10 @@ class DebateError(Exception):
 
 class Debate:
     def __init__(self, registry: Registry, runner: Runner, packs: PackStore, store: Store,
-                 settings: Settings):
+                 settings: Settings, grounder: Grounder | None = None):
         self.registry, self.runner, self.packs = registry, runner, packs
         self.store, self.settings = store, settings
+        self.grounder = grounder if grounder is not None else default_grounder()
 
     # ------------------------------------------------------------------ setup
 
@@ -143,7 +150,7 @@ class Debate:
         escalate = req.escalate if len(order) >= 3 else "always"  # nothing to escalate to
         frame = req.frame if req.frame is not None else escalate == "always"
         return Ctx(
-            escalate=escalate, frame=frame,
+            escalate=escalate, frame=frame, ground=req.ground and mode == "review",
             rng=random.Random(f"{req.seed if req.seed is not None else run_id}-peers"),
             run_id=run_id, pack=pack, mode=mode, text=req.input, nonce=prompts.new_nonce(),
             models=order, aliases={m: ALIASES[i] for i, m in enumerate(order)}, judge_id=judge,
@@ -322,6 +329,18 @@ class Debate:
         ctx.emit("framed", Framed(model_id=ctx.judge_id, restatement=text, error=error,
                                   input_flags=new_flags))
 
+    async def _ground(self, ctx: Ctx) -> list[ToolFinding]:
+        """Static analysis over the input (B10). A missing or failing tool never stops the run."""
+        g = self.grounder
+        if g is None:
+            ctx.emit("grounded", Grounded(tool="semgrep", available=False, findings=[],
+                                          error="semgrep is not installed (pip install semgrep)"))
+            return []
+        findings, err, ms = await timed_check(g, ctx.text)
+        ctx.emit("grounded", Grounded(tool=g.name, available=True, findings=findings, error=err,
+                                      duration_ms=ms))
+        return findings
+
     def _first_pass(self, ctx: Ctx) -> tuple[list[str], list[str]]:
         """Best calibrated model plus the best model from a different family."""
         def pooled(m: str) -> float:
@@ -364,7 +383,8 @@ class Debate:
         emit("run_started", RunStarted(
             run_id=run_id, pack=ctx.pack.id, mode=ctx.mode, model_ids=ctx.models,
             aliases=ctx.aliases, judge_model_id=ctx.judge_id, max_rounds=ctx.max_rounds,
-            escalate=ctx.escalate, frame=ctx.frame, input_flags=list(ctx.flags)))
+            escalate=ctx.escalate, frame=ctx.frame, ground=ctx.ground,
+            input_flags=list(ctx.flags)))
         if ctx.frame:
             await self._frame(ctx)
         states: dict[str, State] = {}
@@ -408,12 +428,13 @@ class Debate:
                 stop = self._check_stop(ctx, rnd, states, changed=changed)
             emit("stopped", stop)
 
-        tally, ruling, final = await self.adjudicate(ctx, states, skip_judge=early)
+        tools = await self._ground(ctx) if ctx.ground else None
+        tally, ruling, final = await self.adjudicate(ctx, states, skip_judge=early, tools=tools)
         emit("tally", tally)
         emit("judge_ruling", ruling)
         emit("final", final)
         return DebateResult(run_id, ctx.mode, ctx.aliases, final, tally, ruling, stop, rounds,
-                            flips, errors)
+                            flips, errors, states=states, ctx=ctx)
 
     def _check_stop(self, ctx: Ctx, rnd: int, states: dict[str, State], *,
                     changed: bool) -> Stopped | None:
@@ -429,14 +450,15 @@ class Debate:
 
     # ------------------------------------------------------------------ tally + judge
 
-    async def adjudicate(self, ctx: Ctx, states: dict[str, State], *,
-                         skip_judge: bool = False) -> tuple[Tally, JudgeRuling, Final]:
+    async def adjudicate(self, ctx: Ctx, states: dict[str, State], *, skip_judge: bool = False,
+                         tools: list[ToolFinding] | None = None) -> tuple[Tally, JudgeRuling, Final]:
         tally = build_tally(
             mode=ctx.mode, pack_id=ctx.pack.id, pack_categories=ctx.pack.categories,
             outputs={m: s.out for m, s in states.items()},
             findings={m: s.findings for m, s in states.items()}, aliases=ctx.aliases,
             weights=ctx.weights, category_hint=ctx.category,
-            threshold=self.settings.vote_threshold, tol=self.settings.line_tolerance)
+            threshold=self.settings.vote_threshold, tol=self.settings.line_tolerance,
+            tool_findings=tools)
         ruling = (self._skipped_ruling(ctx, tally) if skip_judge
                   else await self._judge(ctx, tally))
         return tally, ruling, self._finalize(ctx, tally, ruling, states)
@@ -460,6 +482,7 @@ class Debate:
             "id": c.id, "kind": c.kind, "verdict": c.verdict, "category": c.category,
             "lines": [c.line_start, c.line_end] if c.kind == "finding" else None,
             "claim": c.claim, "evidence": c.evidence[:300], "vote_accept": c.vote_accept,
+            "tool_verified": c.tool_verified,
             "weighted_score": round(c.weighted_score, 3), "support_share": round(c.support_share, 3),
             "supporters": [{"alias": s.alias, "confidence": s.confidence, "weight": round(s.weight, 3)}
                            for s in c.supporters],
@@ -474,6 +497,11 @@ class Debate:
         rulings: list[ClusterRuling] = []
         for c in tally.clusters:
             r = given.get(c.id)
+            if c.tool_verified:  # a tool outranks the judge too
+                rulings.append(ClusterRuling(cluster_id=c.id, accept=True, vote_accept=True,
+                                             overrides_vote=False,
+                                             reason=f"Confirmed by {c.tool_rule}." if c.tool_rule else ""))
+                continue
             accept, reason = (c.vote_accept, "") if r is None else (r.accept, r.reason.strip())
             if accept != c.vote_accept and len(reason) < self.settings.min_change_reason_chars:
                 accept, reason = c.vote_accept, "Override ignored: the judge gave no reason."
@@ -589,17 +617,18 @@ class Debate:
             text = ("The panel could not settle this claim." if overall == "unsure"
                     else f"The panel judges the claim {overall}.")
         elif confirmed:
-            top = max(confirmed, key=lambda c: c.weighted_score)
+            top = max(confirmed, key=lambda c: (c.tool_verified, c.weighted_score))
             text = (f"Fix {len(confirmed)} confirmed issue(s), starting with lines "
                     f"{top.line_start}-{top.line_end} ({top.category}): {top.claim}")
         else:
             text = "No defect was confirmed; the change looks fine to merge."
-        return Recommendation(verdict=overall, text=text, confidence=conf)  # type: ignore[arg-type]
+        return Recommendation(verdict=overall, text=text, confidence=conf,  # type: ignore[arg-type]
+                              tool_verified=any(c.tool_verified for c in confirmed))
 
     def _next_step(self, ctx: Ctx, confirmed: list) -> NextStep | None:
         if ctx.mode != "review" or not confirmed:
             return None
-        top = max(confirmed, key=lambda c: c.weighted_score)
+        top = max(confirmed, key=lambda c: (c.tool_verified, c.weighted_score))
         return NextStep(
             cluster_id=top.id, patch=top.fix or None,
             text=f"Fix lines {top.line_start}-{top.line_end} ({top.category}): {top.claim}")

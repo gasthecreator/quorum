@@ -1,0 +1,89 @@
+# Static-analysis rules used for tool grounding (B10). A tool-verified finding outranks any vote,
+# so every rule here is written for precision over recall: when in doubt, do not match.
+# Each rule's metadata.category must be a category of the code-review pack.
+rules:
+  - id: quorum.sql-built-from-variables
+    languages: [python]
+    severity: ERROR
+    message: SQL text is built from a variable (concatenation, f-string, format or %) and executed.
+    metadata:
+      category: sql_injection
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: '"..." + $X'
+              - pattern: $X + "..."
+              - pattern: f"...{$X}..."
+              - pattern: '"...".format(...)'
+              - pattern: '"..." % $X'
+          - pattern-not: '"..." + "..."'
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $DB.execute($SQL, ...)
+              - pattern: $DB.executemany($SQL, ...)
+              - pattern: $DB.executescript($SQL)
+              - pattern: $DB.raw($SQL, ...)
+          - focus-metavariable: $SQL
+
+  - id: quorum.coroutine-not-awaited
+    languages: [python]
+    severity: ERROR
+    message: Call on an async client or store inside an async function is not awaited.
+    metadata:
+      category: missing_await
+    patterns:
+      - pattern-inside: |
+          async def $F(...):
+            ...
+      - pattern: $C.$M(...)
+      - pattern-not-inside: await $C.$M(...)
+      - pattern-not-inside: asyncio.create_task($C.$M(...))
+      - pattern-not-inside: asyncio.gather(..., $C.$M(...), ...)
+      - metavariable-regex:
+          metavariable: $C
+          regex: ^(client|session|store|http|http_client|aclient|redis|cache|channel)$
+      - metavariable-regex:
+          metavariable: $M
+          regex: ^(get|post|put|patch|delete|fetch|save|send|request|set|flush|publish)$
+
+  - id: quorum.select-without-limit
+    languages: [python]
+    severity: WARNING
+    message: SELECT without LIMIT whose rows are all read; the result size is unbounded.
+    metadata:
+      category: unbounded_query
+    patterns:
+      - pattern-inside: |
+          def $F(...):
+            ...
+      - pattern-either:
+          - pattern: $DB.execute("...", ...)
+          - pattern: $DB.execute("""...""", ...)
+      - pattern-not-inside: |
+          def $F(...):
+            ...
+            $Z.fetchone()
+            ...
+      - pattern-not-inside: |
+          def $F(...):
+            ...
+            $Z.fetchmany(...)
+            ...
+      - metavariable-pattern:
+          metavariable: $DB
+          pattern-regex: .*
+      - pattern-regex: (?is)\.execute\(\s*[rbuf]*["']{1,3}\s*select\b(?:(?!\blimit\b)(?!count\s*\().)*["']{1,3}
+
+  - id: quorum.index-or-bound-off-by-one
+    languages: [python]
+    severity: ERROR
+    message: Index or loop bound is one past the end of the sequence.
+    metadata:
+      category: off_by_one
+    pattern-either:
+      - pattern: $X[len($X)]
+      - pattern: range(len($X) + 1)
+      - pattern: range(len($X) - $K + 2)
+      - pattern: $X[len($X) - $N - 1:]

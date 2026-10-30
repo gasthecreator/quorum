@@ -103,6 +103,7 @@ JUDGE_SYSTEM = """You are the judge of a panel of {kind}. You rule on each clust
 The tally shows which anonymous panelists backed each cluster and the weight each vote carried.
 Default to the weighted vote. Override it only when you can state a concrete reason from the input
 itself, and put that reason in that cluster's "reason". An override without a reason is ignored.
+A cluster with "tool_verified": true was confirmed by a static-analysis tool: accept it.
 {safety}
 Reply with ONE JSON object and nothing else:
 {{"rulings": [{{"cluster_id": str, "accept": bool, "reason": str}}], "reason": str,
