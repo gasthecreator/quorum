@@ -172,3 +172,22 @@ async def test_a_finding_on_a_comment_is_dropped_and_the_verdict_follows(debate,
     msgs = [d for e, d in events if e == "model_message" and d.model_id == m["sloppy"]]
     assert msgs and all(d.findings == [] for d in msgs)
     assert res.final.verdict.overall == "no_issue"
+
+
+def test_agreement_stays_within_zero_and_one_when_findings_overlap_across_categories(debate, registry, packs):
+    """Seen in the first real evaluation: 1.17, because two of A's findings matched one of B's."""
+    from quorum.engine import State
+    from quorum.schemas import DebaterOutput, Finding, Position
+
+    def st(*lines):
+        fs = [Finding(id=f"x{i}", category=c, line_start=ln, line_end=ln, claim="c")
+              for i, (ln, c) in enumerate(lines)]
+        return State(DebaterOutput(position=Position(verdict="issue", confidence=0.9)), fs)
+
+    ctx = debate.context(RunRequest(pack="code-review-dev", input="x", model_ids=["fake:sharp", "fake:sloppy"]), "r")
+    a = st((3, "sql_injection"), (3, "unbounded_query"), (4, "off_by_one"))
+    b = st((3, "sql_injection"))
+    ag = debate.agreement(ctx, {"fake:sharp": a, "fake:sloppy": b})
+    assert 0.0 <= ag <= 1.0
+    assert debate.agreement(ctx, {"fake:sharp": a, "fake:sloppy": a}) == 1.0
+    assert debate.agreement(ctx, {"fake:sharp": st((3, "x")), "fake:sloppy": st((30, "x"))}) == 0.0

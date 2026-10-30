@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel
 
 from . import prompts
-from .cluster import build_tally, finding_match, spans_overlap
+from .cluster import build_tally, finding_match, group_findings, spans_overlap
 from .config import Settings
 from .grounding import Grounder, default_grounder, timed_check
 from .packs import PackStore
@@ -244,9 +244,9 @@ class Debate:
                 if ctx.mode == "claim" or (not a.findings and not b.findings):
                     scores.append(1.0 if a.out.position.verdict == b.out.position.verdict else 0.0)
                     continue
-                inter = sum(1 for x in a.findings if any(finding_match(x, y, tol) for y in b.findings))
-                union = len(a.findings) + len(b.findings) - inter
-                scores.append(inter / union if union else 1.0)
+                # cluster the two answers together: agreement is the share of clusters both raised
+                groups = group_findings({"a": a.findings, "b": b.findings}, tol)
+                scores.append(sum(len(g.members) == 2 for g in groups) / len(groups) if groups else 1.0)
         return sum(scores) / len(scores)
 
     def _history_summary(self, ctx: Ctx, rounds: list[dict[str, State]], upto: int) -> str:
