@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from . import __version__
 from .calibrate import calibrate_many, now
+from .chat import ChatError, ChatManager
 from .config import Settings
 from .engine import Debate, DebateError
 from .evaluate import run_eval
@@ -26,6 +27,12 @@ from .schemas import (
     CONTRACT_VERSION,
     ApiError,
     CalibrateRequest,
+    ChatCreate,
+    ChatCreated,
+    ChatListItem,
+    ChatMessageAccepted,
+    ChatMessageRequest,
+    ChatSummary,
     ErrorEvent,
     EvalRequest,
     EvalResult,
@@ -67,6 +74,7 @@ class AppState:
         self.runner = Runner(settings)
         self.debate = Debate(self.registry, self.runner, self.packs, self.store, settings)
         self.streams = Streams(self.store)
+        self.chats = ChatManager(self.registry, self.runner, self.store, self.streams, settings)
         self.tasks: set[asyncio.Task] = set()
 
     def spawn(self, coro) -> None:
@@ -99,6 +107,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(RegistryError)
     async def _reg_exc(_: Request, e: RegistryError):
+        return JSONResponse(ApiError(code=e.code, message=e.message).model_dump(), e.status)
+
+    @app.exception_handler(ChatError)
+    async def _chat_exc(_: Request, e: ChatError):
         return JSONResponse(ApiError(code=e.code, message=e.message).model_dump(), e.status)
 
     @app.exception_handler(PackError)
@@ -302,5 +314,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             created_at=rec["created_at"],
             events=[EventEnvelope(**e) for e in state.store.events(run_id)],
             final=Final(**rec["final"]) if rec["final"] else None)
+
+    # ------------------------------------------------------------------ group chat (v1.4)
+
+    @app.post("/chats", response_model=ChatCreated, status_code=201)
+    async def create_chat(body: ChatCreate):
+        st = state.chats.create(body)
+        if body.message:
+            turn, message_id, coro = state.chats.begin_turn(st.chat_id, body.message)
+            state.spawn(coro)
+            return ChatCreated(chat_id=st.chat_id, turn=turn, message_id=message_id)
+        return ChatCreated(chat_id=st.chat_id)
+
+    @app.get("/chats", response_model=list[ChatListItem])
+    async def list_chats():
+        out = []
+        for rec in state.store.list_chats():
+            events = state.chats.log(rec["id"]).events
+            last = next((e["data"]["text"] for e in reversed(events)
+                         if e["event"] in ("judge_message", "chat_message", "user_message")
+                         and e["data"].get("text")), "")
+            out.append(ChatListItem(
+                chat_id=rec["id"], title=rec["title"], model_ids=rec["model_ids"],
+                created_at=rec["created_at"], last_message=last[:200],
+                turns=sum(1 for e in events if e["event"] == "user_message")))
+        return out
+
+    @app.get("/chats/{chat_id}", response_model=ChatSummary)
+    async def get_chat(chat_id: str):
+        st = state.chats.get(chat_id)
+        return ChatSummary(
+            chat_id=chat_id, title=st.title, model_ids=st.model_ids, aliases=st.aliases,
+            judge_model_id=st.judge_model_id, rounds=st.rounds, created_at=st.created_at,
+            status="replying" if st.busy else "idle",
+            events=[EventEnvelope(**e) for e in state.chats.log(chat_id).events])
+
+    @app.post("/chats/{chat_id}/messages", response_model=ChatMessageAccepted, status_code=202)
+    async def post_chat_message(chat_id: str, body: ChatMessageRequest):
+        turn, message_id, coro = state.chats.begin_turn(chat_id, body.text)
+        state.spawn(coro)
+        return ChatMessageAccepted(chat_id=chat_id, turn=turn, message_id=message_id)
+
+    @app.get("/chats/{chat_id}/events")
+    async def chat_events(chat_id: str, last_event_id: str | None = Header(default=None),
+                          after: int = Query(default=0, ge=0)):
+        state.chats.get(chat_id)  # 404 for an unknown chat
+        return _sse(state.chats.log(chat_id), last_event_id, after)
 
     return app

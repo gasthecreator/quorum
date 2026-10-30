@@ -52,3 +52,20 @@ def test_pack_files_validate(packs):
         for split in ("calibration", "heldout"):
             for item in packs.corpus(p.id, split):
                 adapter.validate_python(item.model_dump())
+
+
+def test_chat_fixtures_validate_and_cover_the_cases():
+    index = json.loads((FIX / "chat" / "index.json").read_text())
+    assert {e["file"] for e in index} == {"basic.jsonl", "one_model_fails.jsonl", "all_fail.jsonl"}
+    for entry in index:
+        lines = [json.loads(x) for x in (FIX / "chat" / entry["file"]).read_text().splitlines()]
+        assert [x["seq"] for x in lines] == list(range(1, len(lines) + 1))
+        assert [x["t_ms"] for x in lines] == sorted(x["t_ms"] for x in lines)
+        names = [x["event"] for x in lines]
+        assert names[0] == "chat_started" and names[-1] == "turn_finished"
+        for x in lines:
+            schemas.CHAT_EVENT_MODELS[x["event"]].model_validate(x["data"])
+        assert names.count("user_message") == names.count("turn_finished") == len(entry["messages"])
+    basic = [json.loads(x) for x in (FIX / "chat" / "basic.jsonl").read_text().splitlines()]
+    assert any(x["event"] == "chat_message" and x["data"]["passed"] for x in basic)
+    assert sum(x["event"] == "judge_message" for x in basic) == 2

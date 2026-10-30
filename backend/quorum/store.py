@@ -33,6 +33,9 @@ CREATE TABLE IF NOT EXISTS jobs (
   total INTEGER NOT NULL DEFAULT 0, message TEXT NOT NULL DEFAULT '', result TEXT, error TEXT,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS chats (
+  id TEXT PRIMARY KEY, config TEXT NOT NULL, created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS eval_results (
   id TEXT PRIMARY KEY, pack TEXT NOT NULL, created_at TEXT NOT NULL, body TEXT NOT NULL
 );
@@ -172,6 +175,19 @@ class Store:
         d = dict(r)
         d["result"] = json.loads(d["result"]) if d["result"] else None
         return d
+
+    # ------------------------------------------------------------------ chats
+
+    def create_chat(self, chat_id: str, config: dict, created_at: str) -> None:
+        self._exec("INSERT INTO chats VALUES (?,?,?)", (chat_id, json.dumps(config), created_at))
+
+    def get_chat(self, chat_id: str) -> dict | None:
+        r = self._one("SELECT * FROM chats WHERE id=?", (chat_id,))
+        return {"id": r["id"], "created_at": r["created_at"], **json.loads(r["config"])} if r else None
+
+    def list_chats(self) -> list[dict]:
+        return [{"id": r["id"], "created_at": r["created_at"], **json.loads(r["config"])}
+                for r in self._all("SELECT * FROM chats ORDER BY created_at DESC")]
 
     # ------------------------------------------------------------------ eval
 

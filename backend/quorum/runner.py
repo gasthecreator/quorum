@@ -22,6 +22,7 @@ class CallResult:
     completion_tokens: int = 0
     attempts: int = 0
     raw: str = ""
+    text: str = ""
     notes: list[str] = field(default_factory=list)
 
 
@@ -164,6 +165,21 @@ class Runner:
                         {"role": "user", "content": "That reply was not valid. Reply again with ONLY "
                                                     "the JSON object described in the instructions."},
                     ]
+
+    async def text(self, provider: LLMProvider, messages: list[dict]) -> CallResult:
+        """A plain-text reply (group chat): same timeouts and retries, no JSON."""
+        res = CallResult()
+        async with self._sem:
+            comp = await self._complete(provider, messages, None, res)
+        if comp is None:
+            return res
+        res.error = None
+        res.prompt_tokens, res.completion_tokens = comp.prompt_tokens, comp.completion_tokens
+        res.raw = comp.text
+        res.text = comp.text.strip()
+        if not res.text:
+            res.error = "the model returned an empty reply"
+        return res
 
     async def _complete(self, provider, msgs, schema, res: CallResult):
         s = self.settings

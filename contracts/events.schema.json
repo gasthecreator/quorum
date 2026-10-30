@@ -1,5 +1,305 @@
 {
-  "contract_version": "1.3.0",
+  "chat_events": {
+    "chat_message": {
+      "additionalProperties": false,
+      "description": "A panelist's message. `passed` means it had nothing to add in a reaction round (text is empty).",
+      "properties": {
+        "alias": {
+          "title": "Alias",
+          "type": "string"
+        },
+        "completion_tokens": {
+          "default": 0,
+          "title": "Completion Tokens",
+          "type": "integer"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "message_id": {
+          "title": "Message Id",
+          "type": "string"
+        },
+        "model_id": {
+          "title": "Model Id",
+          "type": "string"
+        },
+        "passed": {
+          "default": false,
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "prompt_tokens": {
+          "default": 0,
+          "title": "Prompt Tokens",
+          "type": "integer"
+        },
+        "round": {
+          "description": "0 is the first reply; 1 and 2 are reactions to the others",
+          "title": "Round",
+          "type": "integer"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "turn": {
+          "title": "Turn",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "turn",
+        "round",
+        "message_id",
+        "model_id",
+        "alias",
+        "text"
+      ],
+      "title": "ChatReply",
+      "type": "object"
+    },
+    "chat_started": {
+      "additionalProperties": false,
+      "properties": {
+        "aliases": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "object"
+        },
+        "chat_id": {
+          "title": "Chat Id",
+          "type": "string"
+        },
+        "judge_model_id": {
+          "title": "Judge Model Id",
+          "type": "string"
+        },
+        "model_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Model Ids",
+          "type": "array"
+        },
+        "rounds": {
+          "title": "Rounds",
+          "type": "integer"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "chat_id",
+        "title",
+        "model_ids",
+        "aliases",
+        "judge_model_id",
+        "rounds"
+      ],
+      "title": "ChatStarted",
+      "type": "object"
+    },
+    "error": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ErrorEvent",
+      "type": "object"
+    },
+    "judge_message": {
+      "additionalProperties": false,
+      "properties": {
+        "answer": {
+          "default": "",
+          "title": "Answer",
+          "type": "string"
+        },
+        "consensus": {
+          "default": "",
+          "title": "Consensus",
+          "type": "string"
+        },
+        "disagreement": {
+          "default": "",
+          "title": "Disagreement",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "message_id": {
+          "title": "Message Id",
+          "type": "string"
+        },
+        "model_id": {
+          "title": "Model Id",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "turn": {
+          "title": "Turn",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "turn",
+        "message_id",
+        "model_id",
+        "text"
+      ],
+      "title": "JudgeMessage",
+      "type": "object"
+    },
+    "model_typing": {
+      "additionalProperties": false,
+      "description": "Show a typing indicator for this participant until its chat_message / judge_message arrives.",
+      "properties": {
+        "alias": {
+          "title": "Alias",
+          "type": "string"
+        },
+        "model_id": {
+          "title": "Model Id",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "panelist",
+            "judge"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "round": {
+          "title": "Round",
+          "type": "integer"
+        },
+        "turn": {
+          "title": "Turn",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "turn",
+        "round",
+        "model_id",
+        "alias",
+        "role"
+      ],
+      "title": "ModelTyping",
+      "type": "object"
+    },
+    "turn_finished": {
+      "$defs": {
+        "Usage": {
+          "additionalProperties": false,
+          "properties": {
+            "calls": {
+              "default": 0,
+              "title": "Calls",
+              "type": "integer"
+            },
+            "completion_tokens": {
+              "default": 0,
+              "title": "Completion Tokens",
+              "type": "integer"
+            },
+            "elapsed_ms": {
+              "default": 0,
+              "title": "Elapsed Ms",
+              "type": "integer"
+            },
+            "prompt_tokens": {
+              "default": 0,
+              "title": "Prompt Tokens",
+              "type": "integer"
+            }
+          },
+          "title": "Usage",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "turn": {
+          "title": "Turn",
+          "type": "integer"
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        }
+      },
+      "required": [
+        "turn",
+        "usage"
+      ],
+      "title": "TurnFinished",
+      "type": "object"
+    },
+    "user_message": {
+      "additionalProperties": false,
+      "properties": {
+        "message_id": {
+          "title": "Message Id",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "turn": {
+          "title": "Turn",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "turn",
+        "message_id",
+        "text"
+      ],
+      "title": "UserMessage",
+      "type": "object"
+    }
+  },
+  "contract_version": "1.4.0",
   "envelope": {
     "additionalProperties": false,
     "description": "One SSE frame: `id: <seq>`, `event: <event>`, `data: <json of data>`.",
@@ -1658,6 +1958,7 @@
     }
   },
   "terminal_events": {
+    "chat": [],
     "job": [
       "job_done",
       "job_error"

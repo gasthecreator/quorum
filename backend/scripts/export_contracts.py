@@ -27,7 +27,8 @@ def build() -> dict[str, str]:
         "envelope": schemas.EventEnvelope.model_json_schema(),
         "run_events": {k: v.model_json_schema() for k, v in schemas.RUN_EVENT_MODELS.items()},
         "job_events": {k: v.model_json_schema() for k, v in schemas.JOB_EVENT_MODELS.items()},
-        "terminal_events": {"run": ["final", "error"], "job": ["job_done", "job_error"]},
+        "chat_events": {k: v.model_json_schema() for k, v in schemas.CHAT_EVENT_MODELS.items()},
+        "terminal_events": {"run": ["final", "error"], "job": ["job_done", "job_error"], "chat": []},
     }
     pack = {
         "pack_json": schemas.Pack.model_json_schema(),

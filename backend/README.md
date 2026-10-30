@@ -19,6 +19,7 @@ quorum models add --provider openai_compat --tag gemma-3-4b-it \
     --base-url http://127.0.0.1:1234/v1 --api-key-env LMSTUDIO_API_KEY --open-weight
 quorum packs                             # packs found; `quorum packs validate <id>`
 quorum calibrate --models qwen2.5:3b,llama3.2:3b,gemma3:4b --pack code-review
+quorum chat --models qwen2.5:3b,llama3.2:3b,gemma3:4b   # a group chat in the terminal
 quorum review change.diff --pack code-review --models qwen2.5:3b,llama3.2:3b,gemma3:4b \
     --escalate auto --export report.html      # 2 models first; .md or .html transcript
 quorum eval --pack code-review --models qwen2.5:3b,llama3.2:3b,gemma3:4b --judge qwen2.5:3b
@@ -70,6 +71,7 @@ models and nothing measured with them may be published. Hand-made seed packs liv
 | `engine.py` | B4, B6 | Blind round, anonymised debate rounds, evidence-gated changes, stop rules, judge |
 | `cluster.py` | B5 | Groups findings by file and line overlap, scores `sum(weight x confidence)` |
 | `calibrate.py`, `weights.py`, `stats.py` | B7 | Per-category Wilson lower bound; `weight = max(lower, 0.05)` |
+| `chat.py` | v1.4 | Group chat: turns, reactions, judge summary, history; `/chats` endpoints |
 | `export.py` | B14 | Markdown and self-contained HTML transcript of a finished run |
 | `evaluate.py` | B8 | Six baseline conditions plus optional role condition 7, CSV and JSON |
 | `api.py`, `streams.py`, `cli.py` | B9 | Endpoints, replayable SSE, CLI |
@@ -108,6 +110,11 @@ Design decisions worth knowing:
   debate after a cold round-0 review. Role text is one or two sentences by design; the judge never
   gets a role. These are unmeasured personas until `quorum eval --roles` has been run on a real
   held-out split: condition 7 is the ablation of condition 5. No claim is made until then.
+- **Group chat (v1.4).** `/chats` is a separate, open-ended surface from the review debate: one human
+  message starts a turn, each model replies in plain text (no JSON), may react to the others or pass,
+  and the judge posts consensus / disagreement / answer. Chat has no calibrated weights and no verdict.
+  Replies are plain text, so small-model JSON failures do not apply; the cost is more calls per turn
+  (N + N x rounds + 1).
 - **Failure handling.** A model that fails to answer is carried over (or `unsure`) and excluded from
   the denominator; if none answer the run ends with an `error` event. Calibration refuses to write
   a profile if a third of the items got no usable answer.
