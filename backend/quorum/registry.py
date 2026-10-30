@@ -61,8 +61,31 @@ def infer_family(tag: str, reported: str | None = None) -> str:
     return re.split(r"[-_.\d]", base)[0] or "unknown"
 
 
+DIGITALOCEAN_BASE_URL = "https://inference.do-ai.run/v1"
+# Our own convention for where the DigitalOcean model access key lives; override with api_key_env.
+DIGITALOCEAN_KEY_ENV = "DIGITALOCEAN_MODEL_ACCESS_KEY"
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0", "host.docker.internal"}
+
+
+def infer_locality(provider: str, base_url: str | None) -> str:
+    """Hosted means the prompt leaves this machine. Private-network hosts count as local."""
+    if provider in ("digitalocean",):
+        return "hosted"
+    if provider in ("fake",):
+        return "local"
+    host = (urlparse(base_url).hostname or "") if base_url else "localhost"
+    if host in _LOCAL_HOSTS or host.endswith((".local", ".localhost")):
+        return "local"
+    parts = host.split(".")
+    if len(parts) == 4 and all(p.isdigit() for p in parts):
+        a, b = int(parts[0]), int(parts[1])
+        if a == 10 or (a == 192 and b == 168) or (a == 172 and 16 <= b <= 31):
+            return "local"
+    return "hosted"
+
+
 def model_id(provider: str, tag: str, base_url: str | None = None) -> str:
-    if provider == "openai_compat" and base_url:
+    if provider in ("openai_compat", "digitalocean") and base_url:
         return f"{provider}:{urlparse(base_url).netloc}/{tag}"
     return f"{provider}:{tag}"
 
@@ -102,6 +125,7 @@ class Registry:
                     "id": model_id("fake", tag), "provider": "fake", "tag": tag, "base_url": None,
                     "api_key_env": None, "family": f"simulated-{tag}",
                     "license": "n/a (simulated, not a language model)", "open_weight": False,
+                    "locality": "local",
                     "status": "registered", "status_detail": "Simulated model for offline testing",
                     "source": "fake",
                 }
@@ -157,6 +181,7 @@ class Registry:
             self.store.upsert_model({
                 "id": mid, "provider": "ollama", "tag": t["name"], "base_url": None,
                 "api_key_env": None, "family": infer_family(t["name"], details.get("family")),
+                "locality": infer_locality("ollama", self.settings.ollama_url),
                 "license": lic, "open_weight": True, "status": "registered",
                 "status_detail": "Discovered in Ollama", "source": "ollama",
             })
@@ -175,11 +200,16 @@ class Registry:
         lic = c.license or detect_license(info.get("license", "")) or "unknown (see model card)"
         open_weight = c.open_weight if c.open_weight is not None else (c.provider == "ollama")
         detail = ""
-        if c.provider == "openai_compat" and c.open_weight is None:
+        base_url, key_env = c.base_url, c.api_key_env
+        if c.provider == "digitalocean":
+            base_url, key_env = base_url or DIGITALOCEAN_BASE_URL, key_env or DIGITALOCEAN_KEY_ENV
+        if c.provider != "ollama" and c.open_weight is None and not detail:
             detail = "open_weight not asserted; pass open_weight=true if the weights are open"
         return {
-            "id": model_id(c.provider, c.tag, c.base_url), "provider": c.provider, "tag": c.tag,
-            "base_url": c.base_url, "api_key_env": c.api_key_env,
+            "id": model_id(c.provider, c.tag, base_url), "provider": c.provider, "tag": c.tag,
+            "locality": c.locality or infer_locality(
+                c.provider, base_url if c.provider != "ollama" else self.settings.ollama_url),
+            "base_url": base_url, "api_key_env": key_env,
             "family": c.family or infer_family(c.tag, (info.get("details") or {}).get("family")),
             "license": lic, "open_weight": open_weight, "status": "registered",
             "status_detail": detail, "source": source,
@@ -191,12 +221,16 @@ class Registry:
                 raise RegistryError("fake_disabled", "Simulated models are disabled.", 400)
             if c.tag not in FAKE_TAGS:
                 raise RegistryError("unknown_fake", f"Unknown simulated tag. Use one of {FAKE_TAGS}.")
-        if c.provider == "openai_compat":
-            if not c.base_url or not c.base_url.startswith(("http://", "https://")):
-                raise RegistryError("base_url_required", "openai_compat needs an http(s) base_url.")
-            if c.api_key_env and not os.environ.get(c.api_key_env):
+        if c.provider == "openai_compat" and (
+                not c.base_url or not c.base_url.startswith(("http://", "https://"))):
+            raise RegistryError("base_url_required", "openai_compat needs an http(s) base_url.")
+        if c.provider == "digitalocean" and c.base_url and not c.base_url.startswith("https://"):
+            raise RegistryError("base_url_required", "digitalocean needs an https base_url.")
+        if c.provider in ("openai_compat", "digitalocean"):
+            key_env = c.api_key_env or (DIGITALOCEAN_KEY_ENV if c.provider == "digitalocean" else None)
+            if key_env and not os.environ.get(key_env):
                 raise RegistryError("api_key_missing",
-                                    f"Environment variable {c.api_key_env} is not set.")
+                                    f"Environment variable {key_env} is not set.")
         info: dict = {}
         if c.provider == "ollama":
             tags = await self.ollama_tags(max_age=0)
@@ -224,8 +258,8 @@ class Registry:
             names = {t["name"] for t in self._tags_cache.value}
             installed = m["tag"] in names or f"{m['tag']}:latest" in names
         return ModelInfo(**{k: m[k] for k in (
-            "id", "provider", "tag", "base_url", "family", "license", "open_weight", "status",
-            "status_detail")}, installed=installed)
+            "id", "provider", "tag", "base_url", "family", "license", "open_weight", "locality",
+            "status", "status_detail")}, installed=installed)
 
     async def list(self) -> list[ModelInfo]:
         await self.refresh()
@@ -246,7 +280,7 @@ class Registry:
             raise RegistryError("unknown_model", f"Unknown model '{mid}'.", 404)
         if m["provider"] == "ollama":
             p: LLMProvider = OllamaProvider(self.settings.ollama_url, m["tag"])
-        elif m["provider"] == "openai_compat":
+        elif m["provider"] in ("openai_compat", "digitalocean"):
             key = os.environ.get(m["api_key_env"]) if m["api_key_env"] else None
             p = OpenAICompatProvider(m["base_url"], m["tag"], key)
         elif m["provider"] == "fake":

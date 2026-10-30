@@ -27,9 +27,14 @@ def test_fixtures_validate_against_schemas():
         for x in lines:
             schemas.RUN_EVENT_MODELS[x["event"]].model_validate(x["data"])
         assert lines[-1]["event"] in {"final", "error"}
+        names = [x["event"] for x in lines]
+        if lines[-1]["event"] == "final":  # exactly one of stopped / finished_early precedes the tally
+            assert sum(n in ("stopped", "finished_early") for n in names) == 1
         if entry["stop_reason"]:
             reasons.add(entry["stop_reason"])
     assert reasons == {"consensus", "stalemate", "max_rounds", "budget"}
+    seen = {x["event"] for e in index for x in (json.loads(ln) for ln in (FIX / e["file"]).read_text().splitlines())}
+    assert {"framed", "escalated", "finished_early"} <= seen
 
 
 def test_one_fixture_shows_a_judge_override():

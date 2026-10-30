@@ -109,7 +109,8 @@ async def run_eval(debate: Debate, req: EvalRequest, progress: Progress | None =
 
     for n, item in enumerate(items, 1):
         base = RunRequest(pack=req.pack, input=item.input, model_ids=req.model_ids,
-                          judge_model_id=judge, max_rounds=req.max_rounds, seed=n)
+                          judge_model_id=judge, max_rounds=req.max_rounds, seed=n,
+                          escalate="always", frame=False)  # same inputs the models were calibrated on
         ctx = debate.context(base, f"eval-{n}", noop_emit, weights=book)
         blind: dict = {}
         states: dict[str, State] = {}

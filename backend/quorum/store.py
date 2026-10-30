@@ -12,7 +12,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS models (
   id TEXT PRIMARY KEY, provider TEXT NOT NULL, tag TEXT NOT NULL, base_url TEXT,
   api_key_env TEXT, family TEXT NOT NULL, license TEXT NOT NULL, open_weight INTEGER NOT NULL,
-  status TEXT NOT NULL, status_detail TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT 'api'
+  status TEXT NOT NULL, status_detail TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT 'api',
+  locality TEXT NOT NULL DEFAULT 'local'
 );
 CREATE TABLE IF NOT EXISTS profile_cells (
   model_id TEXT NOT NULL, pack_id TEXT NOT NULL, category TEXT NOT NULL,
@@ -47,6 +48,9 @@ class Store:
         self._lock = threading.Lock()
         with self._lock:
             self._db.executescript(SCHEMA)
+            cols = {r["name"] for r in self._db.execute("PRAGMA table_info(models)")}
+            if "locality" not in cols:  # databases created before contract v1.1
+                self._db.execute("ALTER TABLE models ADD COLUMN locality TEXT NOT NULL DEFAULT 'local'")
             self._db.commit()
 
     def _exec(self, sql: str, args: Iterable | dict = ()) -> None:
@@ -67,13 +71,13 @@ class Store:
     def upsert_model(self, m: dict) -> None:
         self._exec(
             """INSERT INTO models (id, provider, tag, base_url, api_key_env, family, license,
-                                   open_weight, status, status_detail, source)
+                                   open_weight, status, status_detail, source, locality)
                VALUES (:id, :provider, :tag, :base_url, :api_key_env, :family, :license,
-                       :open_weight, :status, :status_detail, :source)
+                       :open_weight, :status, :status_detail, :source, :locality)
                ON CONFLICT(id) DO UPDATE SET base_url=excluded.base_url,
                  api_key_env=excluded.api_key_env, family=excluded.family, license=excluded.license,
                  open_weight=excluded.open_weight, status=excluded.status,
-                 status_detail=excluded.status_detail""",
+                 status_detail=excluded.status_detail, locality=excluded.locality""",
             {**m, "open_weight": int(m["open_weight"])},
         )
 

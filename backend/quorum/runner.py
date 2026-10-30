@@ -11,7 +11,7 @@ from pydantic import BaseModel, ValidationError
 
 from .config import Settings
 from .providers import LLMProvider, ProviderError
-from .schemas import DebaterOutput, JudgeOutput
+from .schemas import DebaterOutput, FramerOutput, JudgeOutput
 
 
 @dataclass
@@ -91,7 +91,12 @@ def clean_debater(d: dict) -> dict:
             "line_start": ls, "line_end": le,
             "severity": sev if sev in {"low", "medium", "high", "critical"} else "medium",
             "claim": _s(f.get("claim"), 600), "evidence": _s(f.get("evidence"), 1200),
+            "fix": _s(f.get("fix"), 1200),
         })
+    crit = d.get("critique")
+    critique = None
+    if isinstance(crit, dict):
+        critique = {k: _s(crit.get(k), 500) for k in ("strongest", "biggest_blind_spot", "missed_by_all")}
     return {
         "position": {"verdict": str(pos.get("verdict", "unsure")).lower().strip(),
                      "confidence": _clamp01(pos.get("confidence"))},
@@ -99,6 +104,7 @@ def clean_debater(d: dict) -> dict:
         "changed": bool(d.get("changed", False)),
         "changed_reason": _s(d.get("changed_reason"), 800),
         "text": _s(d.get("text"), 2000),
+        "critique": critique,
     }
 
 
@@ -108,10 +114,15 @@ def clean_judge(d: dict) -> dict:
         if isinstance(r, dict) and "cluster_id" in r:
             rulings.append({"cluster_id": _s(r["cluster_id"], 64), "accept": bool(r.get("accept")),
                             "reason": _s(r.get("reason"), 800)})
-    return {"rulings": rulings, "reason": _s(d.get("reason"), 1200)}
+    return {"rulings": rulings, "reason": _s(d.get("reason"), 1200),
+            "recommendation": _s(d.get("recommendation"), 600)}
 
 
-CLEANERS = {DebaterOutput: clean_debater, JudgeOutput: clean_judge}
+def clean_framer(d: dict) -> dict:
+    return {"restatement": _s(d.get("restatement"), 1200).strip()}
+
+
+CLEANERS = {DebaterOutput: clean_debater, JudgeOutput: clean_judge, FramerOutput: clean_framer}
 
 
 class Runner:

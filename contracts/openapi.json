@@ -1,6 +1,69 @@
 {
   "components": {
     "schemas": {
+      "Agreement": {
+        "additionalProperties": false,
+        "description": "A cluster every answering panelist backed.",
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "claim": {
+            "title": "Claim",
+            "type": "string"
+          },
+          "cluster_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None when the panel agreed there is nothing to flag",
+            "title": "Cluster Id"
+          }
+        },
+        "required": [
+          "claim",
+          "aliases"
+        ],
+        "title": "Agreement",
+        "type": "object"
+      },
+      "BlindSpot": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "title": "Alias",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "biggest_blind_spot",
+              "missed_by_all"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "alias",
+          "kind",
+          "text"
+        ],
+        "title": "BlindSpot",
+        "type": "object"
+      },
       "CalibrateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -37,6 +100,56 @@
         "title": "CalibrateRequest",
         "type": "object"
       },
+      "Clash": {
+        "additionalProperties": false,
+        "description": "A cluster the panel split on. Both sides are shown.",
+        "properties": {
+          "against_side": {
+            "$ref": "#/components/schemas/ClashSide"
+          },
+          "claim": {
+            "title": "Claim",
+            "type": "string"
+          },
+          "cluster_id": {
+            "title": "Cluster Id",
+            "type": "string"
+          },
+          "for_side": {
+            "$ref": "#/components/schemas/ClashSide"
+          }
+        },
+        "required": [
+          "cluster_id",
+          "claim",
+          "for_side",
+          "against_side"
+        ],
+        "title": "Clash",
+        "type": "object"
+      },
+      "ClashSide": {
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "argument": {
+            "default": "",
+            "title": "Argument",
+            "type": "string"
+          }
+        },
+        "required": [
+          "aliases"
+        ],
+        "title": "ClashSide",
+        "type": "object"
+      },
       "Cluster": {
         "additionalProperties": false,
         "properties": {
@@ -56,6 +169,11 @@
           "file": {
             "default": "",
             "title": "File",
+            "type": "string"
+          },
+          "fix": {
+            "default": "",
+            "title": "Fix",
             "type": "string"
           },
           "id": {
@@ -501,6 +619,27 @@
       "Final": {
         "additionalProperties": false,
         "properties": {
+          "agreements": {
+            "items": {
+              "$ref": "#/components/schemas/Agreement"
+            },
+            "title": "Agreements",
+            "type": "array"
+          },
+          "blind_spots": {
+            "items": {
+              "$ref": "#/components/schemas/BlindSpot"
+            },
+            "title": "Blind Spots",
+            "type": "array"
+          },
+          "clashes": {
+            "items": {
+              "$ref": "#/components/schemas/Clash"
+            },
+            "title": "Clashes",
+            "type": "array"
+          },
           "confirmed_findings": {
             "items": {
               "$ref": "#/components/schemas/Cluster"
@@ -522,6 +661,19 @@
             "title": "Dissent",
             "type": "array"
           },
+          "next_step": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NextStep"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recommendation": {
+            "$ref": "#/components/schemas/Recommendation"
+          },
           "run_id": {
             "title": "Run Id",
             "type": "string"
@@ -539,6 +691,10 @@
           "confirmed_findings",
           "disputed_findings",
           "dissent",
+          "agreements",
+          "clashes",
+          "blind_spots",
+          "recommendation",
           "usage"
         ],
         "title": "Final",
@@ -755,7 +911,7 @@
                 "type": "null"
               }
             ],
-            "description": "Required for openai_compat; e.g. http://127.0.0.1:1234/v1",
+            "description": "Required for openai_compat, e.g. http://127.0.0.1:1234/v1. digitalocean defaults to https://inference.do-ai.run/v1",
             "title": "Base Url"
           },
           "calibrate": {
@@ -784,6 +940,22 @@
               }
             ],
             "title": "License"
+          },
+          "locality": {
+            "anyOf": [
+              {
+                "enum": [
+                  "local",
+                  "hosted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Inferred from the host when omitted; digitalocean is always hosted",
+            "title": "Locality"
           },
           "open_weight": {
             "anyOf": [
@@ -815,6 +987,7 @@
             "enum": [
               "ollama",
               "openai_compat",
+              "digitalocean",
               "fake"
             ],
             "title": "Provider",
@@ -896,6 +1069,14 @@
             "title": "License",
             "type": "string"
           },
+          "locality": {
+            "enum": [
+              "local",
+              "hosted"
+            ],
+            "title": "Locality",
+            "type": "string"
+          },
           "open_weight": {
             "title": "Open Weight",
             "type": "boolean"
@@ -904,6 +1085,7 @@
             "enum": [
               "ollama",
               "openai_compat",
+              "digitalocean",
               "fake"
             ],
             "title": "Provider",
@@ -937,9 +1119,47 @@
           "family",
           "license",
           "open_weight",
+          "locality",
           "status"
         ],
         "title": "ModelInfo",
+        "type": "object"
+      },
+      "NextStep": {
+        "additionalProperties": false,
+        "properties": {
+          "cluster_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cluster Id"
+          },
+          "patch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Suggested replacement code, when a panelist gave one",
+            "title": "Patch"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "NextStep",
         "type": "object"
       },
       "OllamaHealth": {
@@ -1119,6 +1339,40 @@
         "title": "ProfilesResponse",
         "type": "object"
       },
+      "Recommendation": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "description": "weight x confidence of panelists who agree with the verdict / total weight",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "issue",
+              "no_issue",
+              "true",
+              "false",
+              "unsure"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "text",
+          "confidence"
+        ],
+        "title": "Recommendation",
+        "type": "object"
+      },
       "RunCreated": {
         "additionalProperties": false,
         "properties": {
@@ -1147,6 +1401,28 @@
             ],
             "description": "Optional category hint used to pick weights",
             "title": "Category"
+          },
+          "escalate": {
+            "default": "always",
+            "description": "always: full debate. auto: best model + best other-family model first; full debate only if they disagree or either is unsure",
+            "enum": [
+              "auto",
+              "always"
+            ],
+            "title": "Escalate",
+            "type": "string"
+          },
+          "frame": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Run the framer before round 0. Default: true for escalate=always, false for auto (so an easy input costs exactly 2 model calls)",
+            "title": "Frame"
           },
           "input": {
             "maxLength": 60000,
@@ -1380,7 +1656,7 @@
   },
   "info": {
     "title": "Quorum",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -1892,6 +2168,57 @@
           }
         },
         "summary": "Run Events"
+      }
+    },
+    "/runs/{run_id}/export": {
+      "get": {
+        "operationId": "export_run_runs__run_id__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "md",
+              "enum": [
+                "md",
+                "html"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Run"
       }
     }
   }

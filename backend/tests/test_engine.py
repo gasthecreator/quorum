@@ -34,7 +34,7 @@ async def test_consensus_on_seeded_bug(debate, registry):
 async def test_event_order_and_aliases(debate, registry):
     res, events, m = await run(debate, registry, ["sharp", "sloppy", "stubborn"])
     names = [e for e, _ in events]
-    assert names[:2] == ["run_started", "round_started"]
+    assert names[:3] == ["run_started", "framed", "round_started"]
     assert names[-4:] == ["stopped", "tally", "judge_ruling", "final"]
     started = events[0][1]
     assert sorted(started.aliases.values()) == ["A", "B", "C"]

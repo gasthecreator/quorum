@@ -1,6 +1,7 @@
 # Quorum contract
 
-Version: see [`VERSION`](VERSION) (currently 1.0.0). This folder is the only surface the backend and
+Version: see [`VERSION`](VERSION) (currently 1.1.0, which adds the framer, critique round, richer
+`final`, escalation, export and locality; nothing from 1.0 was removed or renamed). This folder is the only surface the backend and
 frontend share. The Python models in `backend/quorum/schemas.py` are the source of truth;
 `backend/scripts/export_contracts.py` generates the JSON files here, and a test fails if they drift.
 
@@ -23,7 +24,7 @@ Frozen after checkpoint C0. Open a pull request labeled `contract`, regenerate t
 
 Every non-2xx response is `{"code": str, "message": str}`. Codes the UI should handle:
 `validation_error` (422), `unknown_run`, `unknown_job`, `unknown_model`, `pack_error` (404),
-`model_unavailable` (409), `model_not_installed` (409), `ollama_unreachable` (503),
+`model_unavailable` (409), `model_not_installed` (409), `run_not_finished` (409), `ollama_unreachable` (503),
 `base_url_required`, `api_key_missing`, `fake_disabled` (400), `no_eval` (404).
 
 ## Endpoints
@@ -38,6 +39,7 @@ Every non-2xx response is `{"code": str, "message": str}`. Codes the UI should h
 | `POST /runs` | `RunRequest` | 202 `{run_id}` |
 | `GET /runs/{id}/events` | | SSE, see below |
 | `GET /runs/{id}` | | `RunSummary` (status, stored events, `final`) |
+| `GET /runs/{id}/export?format=md\|html` | | A download: Markdown transcript or self-contained HTML report, aliases revealed, all model text escaped. 409 `run_not_finished` while running |
 | `POST /calibrate` | `CalibrateRequest` | 202 `{job_id}` |
 | `POST /eval` | `EvalRequest` | 202 `{job_id}` |
 | `GET /eval/latest?pack=` | | `EvalResult`; 404 `no_eval` before the first run |
@@ -57,16 +59,41 @@ Run events, in the order they occur:
 
 ```
 run_started
+[framed]                                                     # frame=true: neutral restatement, before round 0
 round_started(0) model_message x N round_finished(0)        # blind round, messages arrive as each model finishes
 [round_started(1) model_message x N round_finished(1)]      # up to max_rounds visible rounds
 [round_started(2) ...]
-stopped(reason: consensus | stalemate | max_rounds | budget)
+stopped(reason: consensus | stalemate | max_rounds | budget)   # or finished_early, never both
 tally  ->  judge_ruling  ->  final
 ```
 
-or `error` at any point (a stream that ends in `error` has no `final`). `model_message` with
-`error` set means that model failed to answer that round (its position is carried over, or
-`unsure` at confidence 0 in round 0).
+With `escalate: "auto"` (three or more models) round 0 is split in two:
+
+```
+run_started
+round_started(0) model_message x 2                           # best calibrated model + best other-family model
+  agree with confidence >= 0.6:
+      round_finished(0) -> finished_early -> tally -> judge_ruling(skipped: true) -> final
+  otherwise:
+      escalated(reason: disagreement | low_confidence)
+      model_message x (N-2)  round_finished(0)               # the rest join round 0, then the normal loop
+      ... stopped -> tally -> judge_ruling -> final
+```
+
+A run that ends in `error` has no `final`. `model_message` with `error` set means that model failed to
+answer that round (its position is carried over, or `unsure` at confidence 0 in round 0).
+`escalate: "always"` (the default) skips all of that and runs the full debate. `frame` defaults to
+true for `always` and false for `auto`, so an easy input costs exactly two model calls.
+
+**The framer** (`framed`): one extra call, made by the judge model, that restates the input in
+neutral words so a leading prompt cannot steer every model the same way. Debaters get it as a fenced
+block next to the original input, never instead of it. `framed.error` is set if the call failed;
+the run continues without a framing. If the restatement itself contains steering text,
+`framed.input_flags` lists it.
+
+**The critique** (`model_message.critique`, rounds 1 and 2 only): each model answers three short
+questions about the other panelists' messages, which arrive in a different shuffled order for each
+model: `strongest`, `biggest_blind_spot`, `missed_by_all`. A model may answer "none".
 
 Things worth showing in the UI, and where they come from:
 
@@ -81,10 +108,19 @@ Things worth showing in the UI, and where they come from:
 | Override badge | `judge_ruling.overrides_vote`, per cluster `rulings[].overrides_vote`, reason in `rulings[].reason` |
 | Input is trying to steer the models | `run_started.input_flags`, `judge_ruling.injection_flags` |
 | Dissent list | `final.dissent` |
+| "Everyone agreed" / "they clashed, here are both sides" | `final.agreements`, `final.clashes[].for_side / against_side` |
+| Blind spots panel | `final.blind_spots[]` (critic alias, kind, text), plus each message's `critique` |
+| Recommendation line | `final.recommendation.text` and `.confidence` (weight x confidence of the panelists who agree / total weight) |
+| Top fix with a patch | `final.next_step.text`, `.patch` (null unless a panelist supplied replacement code) |
+| "Answered by 2 models" vs "escalated, because ..." | `finished_early` (`calls_saved` is a lower bound) or `escalated.reason / detail`; also `run_started.escalate` |
+| Judge skipped | `judge_ruling.skipped` |
+| Local vs hosted badge | `GET /models[].locality` (a hosted model sends the diff off this machine) |
 
 `tally.clusters[].kind` is `finding` for the code-review pack (lines, category, severity) and
 `verdict` for the claim-check pack (`verdict` is `true` or `false`). `vote_accept` is the weighted
 vote before the judge; a cluster is confirmed when its ruling has `accept: true`.
+
+`fix` on a cluster and `final.next_step.patch` come from the panelists' optional per-finding `fix`.
 
 `weight_source` matters: `default` means the model was never calibrated on this pack and a flat
 0.5 was used, so the bar should look provisional.
@@ -154,13 +190,15 @@ request that produced it.
 
 | Fixture | Shows |
 | --- | --- |
-| `consensus` | Stops after the blind round |
+| `consensus` | Stops after the blind round (includes the `framed` event) |
 | `stalemate` | A model is persuaded, another holds; nobody moves in the last round |
 | `max_rounds` | Positions still moving at the cap |
 | `budget` | Stops after round 0 on the token budget |
 | `judge_override` | The judge overrides the weighted vote with a reason |
 | `injection` | Input steers one model; flagged and outvoted |
 | `claim_check` | Verdict clusters for the claim pack |
+| `escalated` | `escalate: auto`, the first two disagree, the third joins round 0 |
+| `finished_early` | `escalate: auto`, two agreeing models, no framer, judge skipped, 2 calls |
 | `error` | A stream that ends in `error` |
 
 These streams come from the **simulated models** (`QUORUM_ENABLE_FAKE=1`), which are rule-based

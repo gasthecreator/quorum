@@ -1,5 +1,5 @@
 {
-  "contract_version": "1.0.0",
+  "contract_version": "1.1.0",
   "envelope": {
     "additionalProperties": false,
     "description": "One SSE frame: `id: <seq>`, `event: <event>`, `data: <json of data>`.",
@@ -121,8 +121,166 @@
       "title": "ErrorEvent",
       "type": "object"
     },
+    "escalated": {
+      "additionalProperties": false,
+      "properties": {
+        "added_model_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Added Model Ids",
+          "type": "array"
+        },
+        "agreement": {
+          "title": "Agreement",
+          "type": "number"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "first_pass_model_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "First Pass Model Ids",
+          "type": "array"
+        },
+        "reason": {
+          "enum": [
+            "disagreement",
+            "low_confidence"
+          ],
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "detail",
+        "first_pass_model_ids",
+        "added_model_ids",
+        "agreement"
+      ],
+      "title": "Escalated",
+      "type": "object"
+    },
     "final": {
       "$defs": {
+        "Agreement": {
+          "additionalProperties": false,
+          "description": "A cluster every answering panelist backed.",
+          "properties": {
+            "aliases": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Aliases",
+              "type": "array"
+            },
+            "claim": {
+              "title": "Claim",
+              "type": "string"
+            },
+            "cluster_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "None when the panel agreed there is nothing to flag",
+              "title": "Cluster Id"
+            }
+          },
+          "required": [
+            "claim",
+            "aliases"
+          ],
+          "title": "Agreement",
+          "type": "object"
+        },
+        "BlindSpot": {
+          "additionalProperties": false,
+          "properties": {
+            "alias": {
+              "title": "Alias",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "biggest_blind_spot",
+                "missed_by_all"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "alias",
+            "kind",
+            "text"
+          ],
+          "title": "BlindSpot",
+          "type": "object"
+        },
+        "Clash": {
+          "additionalProperties": false,
+          "description": "A cluster the panel split on. Both sides are shown.",
+          "properties": {
+            "against_side": {
+              "$ref": "#/$defs/ClashSide"
+            },
+            "claim": {
+              "title": "Claim",
+              "type": "string"
+            },
+            "cluster_id": {
+              "title": "Cluster Id",
+              "type": "string"
+            },
+            "for_side": {
+              "$ref": "#/$defs/ClashSide"
+            }
+          },
+          "required": [
+            "cluster_id",
+            "claim",
+            "for_side",
+            "against_side"
+          ],
+          "title": "Clash",
+          "type": "object"
+        },
+        "ClashSide": {
+          "additionalProperties": false,
+          "properties": {
+            "aliases": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Aliases",
+              "type": "array"
+            },
+            "argument": {
+              "default": "",
+              "title": "Argument",
+              "type": "string"
+            }
+          },
+          "required": [
+            "aliases"
+          ],
+          "title": "ClashSide",
+          "type": "object"
+        },
         "Cluster": {
           "additionalProperties": false,
           "properties": {
@@ -142,6 +300,11 @@
             "file": {
               "default": "",
               "title": "File",
+              "type": "string"
+            },
+            "fix": {
+              "default": "",
+              "title": "Fix",
               "type": "string"
             },
             "id": {
@@ -320,6 +483,79 @@
           "title": "FinalVerdict",
           "type": "object"
         },
+        "NextStep": {
+          "additionalProperties": false,
+          "properties": {
+            "cluster_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Cluster Id"
+            },
+            "patch": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Suggested replacement code, when a panelist gave one",
+              "title": "Patch"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "title": "NextStep",
+          "type": "object"
+        },
+        "Recommendation": {
+          "additionalProperties": false,
+          "properties": {
+            "confidence": {
+              "description": "weight x confidence of panelists who agree with the verdict / total weight",
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Confidence",
+              "type": "number"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            },
+            "verdict": {
+              "enum": [
+                "issue",
+                "no_issue",
+                "true",
+                "false",
+                "unsure"
+              ],
+              "title": "Verdict",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "text",
+            "confidence"
+          ],
+          "title": "Recommendation",
+          "type": "object"
+        },
         "Supporter": {
           "additionalProperties": false,
           "properties": {
@@ -405,6 +641,27 @@
       },
       "additionalProperties": false,
       "properties": {
+        "agreements": {
+          "items": {
+            "$ref": "#/$defs/Agreement"
+          },
+          "title": "Agreements",
+          "type": "array"
+        },
+        "blind_spots": {
+          "items": {
+            "$ref": "#/$defs/BlindSpot"
+          },
+          "title": "Blind Spots",
+          "type": "array"
+        },
+        "clashes": {
+          "items": {
+            "$ref": "#/$defs/Clash"
+          },
+          "title": "Clashes",
+          "type": "array"
+        },
         "confirmed_findings": {
           "items": {
             "$ref": "#/$defs/Cluster"
@@ -426,6 +683,20 @@
           "title": "Dissent",
           "type": "array"
         },
+        "next_step": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NextStep"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "recommendation": {
+          "$ref": "#/$defs/Recommendation"
+        },
         "run_id": {
           "title": "Run Id",
           "type": "string"
@@ -443,9 +714,90 @@
         "confirmed_findings",
         "disputed_findings",
         "dissent",
+        "agreements",
+        "clashes",
+        "blind_spots",
+        "recommendation",
         "usage"
       ],
       "title": "Final",
+      "type": "object"
+    },
+    "finished_early": {
+      "additionalProperties": false,
+      "properties": {
+        "agreement": {
+          "title": "Agreement",
+          "type": "number"
+        },
+        "calls_saved": {
+          "description": "Lower bound: one blind call per model not consulted, plus the judge",
+          "title": "Calls Saved",
+          "type": "integer"
+        },
+        "min_confidence": {
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "model_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Model Ids",
+          "type": "array"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "model_ids",
+        "agreement",
+        "min_confidence",
+        "calls_saved"
+      ],
+      "title": "FinishedEarly",
+      "type": "object"
+    },
+    "framed": {
+      "additionalProperties": false,
+      "description": "A neutral restatement of the input, produced before round 0 so a leading prompt cannot steer\nevery model the same way. Debaters see it next to the original, never instead of it.",
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "input_flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Input Flags",
+          "type": "array"
+        },
+        "model_id": {
+          "title": "Model Id",
+          "type": "string"
+        },
+        "restatement": {
+          "title": "Restatement",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model_id",
+        "restatement"
+      ],
+      "title": "Framed",
       "type": "object"
     },
     "judge_ruling": {
@@ -518,12 +870,24 @@
           "title": "Reason",
           "type": "string"
         },
+        "recommendation": {
+          "default": "",
+          "description": "The judge's one-sentence recommendation, if given",
+          "title": "Recommendation",
+          "type": "string"
+        },
         "rulings": {
           "items": {
             "$ref": "#/$defs/ClusterRuling"
           },
           "title": "Rulings",
           "type": "array"
+        },
+        "skipped": {
+          "default": false,
+          "description": "True when the early-finish path skipped the judge",
+          "title": "Skipped",
+          "type": "boolean"
         }
       },
       "required": [
@@ -537,6 +901,34 @@
     },
     "model_message": {
       "$defs": {
+        "Critique": {
+          "additionalProperties": false,
+          "description": "Rounds 1 and 2: a structured critique of the other panelists' latest answers.",
+          "properties": {
+            "biggest_blind_spot": {
+              "default": "",
+              "maxLength": 500,
+              "title": "Biggest Blind Spot",
+              "type": "string"
+            },
+            "missed_by_all": {
+              "default": "",
+              "description": "What did everyone miss",
+              "maxLength": 500,
+              "title": "Missed By All",
+              "type": "string"
+            },
+            "strongest": {
+              "default": "",
+              "description": "Which message is strongest, and why",
+              "maxLength": 500,
+              "title": "Strongest",
+              "type": "string"
+            }
+          },
+          "title": "Critique",
+          "type": "object"
+        },
         "Finding": {
           "additionalProperties": false,
           "properties": {
@@ -560,6 +952,13 @@
               "default": "",
               "maxLength": 256,
               "title": "File",
+              "type": "string"
+            },
+            "fix": {
+              "default": "",
+              "description": "Suggested replacement code, if any",
+              "maxLength": 1200,
+              "title": "Fix",
               "type": "string"
             },
             "id": {
@@ -650,6 +1049,17 @@
           "default": 0,
           "title": "Completion Tokens",
           "type": "integer"
+        },
+        "critique": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Critique"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "error": {
           "anyOf": [
@@ -752,6 +1162,18 @@
           "title": "Aliases",
           "type": "object"
         },
+        "escalate": {
+          "enum": [
+            "auto",
+            "always"
+          ],
+          "title": "Escalate",
+          "type": "string"
+        },
+        "frame": {
+          "title": "Frame",
+          "type": "boolean"
+        },
         "input_flags": {
           "description": "Suspected prompt-injection patterns found in the input",
           "items": {
@@ -799,7 +1221,9 @@
         "model_ids",
         "aliases",
         "judge_model_id",
-        "max_rounds"
+        "max_rounds",
+        "escalate",
+        "frame"
       ],
       "title": "RunStarted",
       "type": "object"
@@ -850,6 +1274,11 @@
             "file": {
               "default": "",
               "title": "File",
+              "type": "string"
+            },
+            "fix": {
+              "default": "",
+              "title": "Fix",
               "type": "string"
             },
             "id": {

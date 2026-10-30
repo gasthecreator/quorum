@@ -36,6 +36,7 @@ class Settings:
     run_token_budget: int = 60_000
     run_time_budget_s: float = 900.0
     min_change_reason_chars: int = 12
+    escalation_min_confidence: float = 0.6
 
     @property
     def db_path(self) -> Path:

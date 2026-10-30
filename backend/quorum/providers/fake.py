@@ -19,6 +19,7 @@ import asyncio
 import hashlib
 import json
 import re
+from typing import ClassVar
 
 from ..schemas import DebaterOutput
 from .base import ChatMessage, Completion
@@ -74,12 +75,26 @@ class FakeProvider:
         system, user = messages[0]["content"], messages[-1]["content"]
         if self.kind == "broken":
             return Completion("I think the code looks fine to me!", 10, 8)
-        if "You are the judge" in system:
+        if "You restate inputs neutrally" in system:
+            out = self._frame(user)
+        elif "You are the judge" in system:
             out = self._judge(user)
         else:
             out = self._debater(system, user)
         text = json.dumps(out)
         return Completion(text, prompt_tokens=len(system + user) // 4, completion_tokens=len(text) // 4)
+
+    # ------------------------------------------------------------------ framer
+
+    def _frame(self, user: str) -> dict:
+        m = re.search(r"=== INPUT (\w+) ===\n(.*?)\n=== END INPUT", user, re.DOTALL)
+        body = m.group(2) if m else ""
+        if not re.search(r"^\s*\d+ \| ", body, re.MULTILINE):
+            return {"restatement": f"Is the following statement accurate? {body.strip()[:300]}"}
+        code = [re.sub(r"^\s*\d+ \| ?", "", ln) for ln in body.splitlines()]
+        sig = next((c.strip() for c in code if c.strip() and not c.strip().startswith("#")), "")
+        return {"restatement": f"A code snippet of {len(code)} lines, starting with `{sig[:80]}`. "
+                               "Review it for defects."}
 
     # ------------------------------------------------------------------ judge
 
@@ -99,7 +114,15 @@ class FakeProvider:
                                     "reason": "Several independent panelists agree; the low-weight vote undercounts it."})
                     continue
             rulings.append({"cluster_id": c["id"], "accept": bool(c["vote_accept"]), "reason": ""})
-        return {"rulings": rulings, "reason": "Followed the weighted vote unless noted."}
+        accepted = [c for c in tally["clusters"] if c["vote_accept"]]
+        if not accepted:
+            rec = "No change needed."
+        elif accepted[0]["kind"] == "verdict":
+            rec = f"Treat the claim as {accepted[0]['verdict']}."
+        else:
+            rec = f"Fix the {accepted[0]['category']} problem first."
+        return {"rulings": rulings, "reason": "Followed the weighted vote unless noted.",
+                "recommendation": rec}
 
     # ------------------------------------------------------------------ debaters
 
@@ -110,9 +133,12 @@ class FakeProvider:
         nonce_m = re.search(r"=== INPUT (\w+) ===", user)
         nonce = nonce_m.group(1) if nonce_m else ""
         body = _between(user, f"=== INPUT {nonce} ===", f"=== END INPUT {nonce} ===") or ""
-        peers = [json.loads(b) for _, b in re.findall(
+        named = [(a, json.loads(b)) for a, b in re.findall(
             rf"=== PEER (\w) {nonce} ===\n(.*?)\n=== END PEER", user, re.DOTALL)] if rnd else []
+        peers = [p for _, p in named]
         out = self._claim(body, peers, rnd) if claim_mode else self._review(body, peers, rnd)
+        if rnd and named:
+            out["critique"] = self._critique(named)
         return DebaterOutput.model_validate(out).model_dump()
 
     def _review(self, numbered: str, peers: list[dict], rnd: int) -> dict:
@@ -178,9 +204,31 @@ class FakeProvider:
                 dedup.append(o)
         return dedup
 
+    def _critique(self, named: list[tuple[str, dict]]) -> dict:
+        def score(p):
+            return (len(p["findings"]), p["position"]["confidence"])
+
+        best = max(named, key=lambda x: score(x[1]))
+        worst = min(named, key=lambda x: score(x[1]))
+        same = len({p["position"]["verdict"] for _, p in named}) == 1
+        return {
+            "strongest": f"{best[0]}: it points at concrete lines and gives evidence.",
+            "biggest_blind_spot": (f"{worst[0]}: it offers little to check." if not same
+                                   else "none"),
+            "missed_by_all": "none" if same else "Whether the unflagged lines are really safe.",
+        }
+
+    FIXES: ClassVar[dict[str, str]] = {
+        "sql_injection": 'Use a parameterized query: db.execute("... WHERE x = ?", (value,))',
+        "off_by_one": "Correct the loop bound or slice by one.",
+        "missing_await": "Add `await` before the call.",
+        "unbounded_query": "Add a LIMIT clause and cap the page size.",
+    }
+
     def _finding(self, line: int, category: str, claim: str) -> dict:
         return {"category": category, "file": "", "line_start": line, "line_end": line,
-                "severity": "high", "claim": claim, "evidence": f"Line {line}: {claim}"}
+                "severity": "high", "claim": claim, "evidence": f"Line {line}: {claim}",
+                "fix": self.FIXES.get(category, "")}
 
     def _claim(self, text: str, peers: list[dict], rnd: int) -> dict:
         claim = text.strip()

@@ -13,6 +13,9 @@ judge: null
 models: []
 #  - provider: ollama
 #    tag: llama3.2:3b
+#  - provider: digitalocean            # hosted; set DIGITALOCEAN_MODEL_ACCESS_KEY first
+#    tag: llama3.3-70b-instruct
+#    open_weight: true
 #  - provider: openai_compat
 #    tag: gemma-3-4b-it
 #    base_url: http://127.0.0.1:1234/v1

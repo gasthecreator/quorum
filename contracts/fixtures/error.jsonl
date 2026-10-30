@@ -1,5 +1,6 @@
-{"seq": 1, "t_ms": 0, "event": "run_started", "data": {"run_id": "fixture-error", "pack": "code-review-dev", "mode": "review", "model_ids": ["fake:broken"], "aliases": {"fake:broken": "A"}, "judge_model_id": "fake:broken", "max_rounds": 2, "input_flags": []}}
-{"seq": 2, "t_ms": 105, "event": "round_started", "data": {"round": 0}}
-{"seq": 3, "t_ms": 1021, "event": "model_message", "data": {"round": 0, "model_id": "fake:broken", "alias": "A", "position": {"verdict": "unsure", "confidence": 0.0}, "findings": [], "changed": false, "changed_reason": "", "text": "", "error": "invalid JSON from model: no JSON object in reply", "prompt_tokens": 20, "completion_tokens": 16}}
-{"seq": 4, "t_ms": 1079, "event": "round_finished", "data": {"round": 0, "agreement": 1.0}}
-{"seq": 5, "t_ms": 1221, "event": "error", "data": {"code": "all_models_failed", "message": "No model produced a valid answer: A: invalid JSON from model: no JSON object in reply"}}
+{"seq": 1, "t_ms": 0, "event": "run_started", "data": {"run_id": "fixture-error", "pack": "code-review-dev", "mode": "review", "model_ids": ["fake:broken"], "aliases": {"fake:broken": "A"}, "judge_model_id": "fake:broken", "max_rounds": 2, "escalate": "always", "frame": true, "input_flags": []}}
+{"seq": 2, "t_ms": 1373, "event": "framed", "data": {"model_id": "fake:broken", "restatement": "", "error": "invalid JSON from model: no JSON object in reply", "input_flags": []}}
+{"seq": 3, "t_ms": 1478, "event": "round_started", "data": {"round": 0}}
+{"seq": 4, "t_ms": 2394, "event": "model_message", "data": {"round": 0, "model_id": "fake:broken", "alias": "A", "position": {"verdict": "unsure", "confidence": 0.0}, "findings": [], "changed": false, "changed_reason": "", "text": "", "critique": null, "error": "invalid JSON from model: no JSON object in reply", "prompt_tokens": 20, "completion_tokens": 16}}
+{"seq": 5, "t_ms": 2452, "event": "round_finished", "data": {"round": 0, "agreement": 1.0}}
+{"seq": 6, "t_ms": 2594, "event": "error", "data": {"code": "all_models_failed", "message": "No model produced a valid answer: A: invalid JSON from model: no JSON object in reply"}}
