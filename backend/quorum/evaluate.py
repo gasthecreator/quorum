@@ -114,6 +114,7 @@ async def run_eval(debate: Debate, req: EvalRequest, progress: Progress | None =
                         else [await grounder.check(i.input) for i in items])
     toward_right = toward_wrong = neutral = 0
     total_steps = len(items)
+    detail: list[dict] = []  # per-item record, written beside the CSV so results can be re-derived
 
     for n, item in enumerate(items, 1):
         base = RunRequest(pack=req.pack, input=item.input, model_ids=req.model_ids,
@@ -136,7 +137,8 @@ async def run_eval(debate: Debate, req: EvalRequest, progress: Progress | None =
                 mode=mode, pack_id=req.pack, pack_categories=pack.categories,
                 outputs={m: s.out for m, s in states.items()},
                 findings={m: s.findings for m, s in states.items()}, aliases=ctx.aliases,
-                weights=weights, category_hint=None, threshold=settings.vote_threshold, tol=tol)
+                weights=weights, category_hint=None, threshold=settings.vote_threshold, tol=tol,
+                by_category=settings.cluster_by_category)
 
         # 1: best calibrated model alone
         if best in states:
@@ -144,7 +146,7 @@ async def run_eval(debate: Debate, req: EvalRequest, progress: Progress | None =
                 mode=mode, pack_id=req.pack, pack_categories=pack.categories,
                 outputs={best: states[best].out}, findings={best: states[best].findings},
                 aliases=ctx.aliases, weights=flat, category_hint=None,
-                threshold=settings.vote_threshold, tol=tol)
+                threshold=settings.vote_threshold, tol=tol, by_category=settings.cluster_by_category)
             outcomes[1].append(_outcome(item, [c for c in t1.clusters if c.vote_accept], tol))
         else:
             outcomes[1].append(_outcome(item, [], tol))
@@ -185,6 +187,20 @@ async def run_eval(debate: Debate, req: EvalRequest, progress: Progress | None =
                     toward_right += 1
                 else:
                     toward_wrong += 1
+        done = len(outcomes[1])
+        detail.append({
+            "id": item.id, "category": item.category, "positive": is_positive(item),
+            "label": item.label.model_dump(),
+            "blind": {m: {
+                "verdict": st.out.position.verdict, "confidence": st.out.position.confidence,
+                "correct": score_state(item, st, tol),
+                "findings": [{"id": f.id, "start": f.line_start, "end": f.line_end,
+                              "category": f.category, "severity": f.severity, "claim": f.claim}
+                             for f in st.findings]} for m, st in states.items()},
+            "outcomes": {str(k): v[-1] for k, v in outcomes.items() if len(v) == done},
+            "final_verdict": result.final.verdict.overall if result.final else None,
+            "stop": result.stop.reason if result.stop else None,
+        })
         if progress:
             progress(n, total_steps, item.id)
 
@@ -223,7 +239,9 @@ async def run_eval(debate: Debate, req: EvalRequest, progress: Progress | None =
             "Intervals: Wilson 95% for proportions, bootstrap 95% for F1.",
         ])
     store.save_eval(result.id, result.pack, result.created_at, result.model_dump(mode="json"))
-    export_eval(result, debate.settings.home / "eval")
+    jp, _ = export_eval(result, debate.settings.home / "eval")
+    jp.with_suffix(".items.json").write_text(json.dumps(
+        {"eval_id": result.id, "pack": req.pack, "models": req.model_ids, "items": detail}, indent=2))
     return result
 
 

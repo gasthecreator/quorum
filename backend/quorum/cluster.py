@@ -29,21 +29,29 @@ class _Group:
     end: int
     members: dict[str, Finding]  # model_id -> finding
 
-    def accepts(self, f: Finding, tol: int) -> bool:
+    category: str = ""
+
+    def accepts(self, f: Finding, tol: int, by_category: bool = False) -> bool:
+        if by_category and f.category != self.category:
+            return False
         return same_file(self.file, f.file) and spans_overlap(
             (self.start, self.end), (f.line_start, f.line_end), tol)
 
 
-def group_findings(per_model: dict[str, list[Finding]], tol: int) -> list[_Group]:
+def group_findings(per_model: dict[str, list[Finding]], tol: int,
+                   by_category: bool = False) -> list[_Group]:
+    """Group findings into clusters: same file, overlapping lines and, when by_category, the same
+    category. Without the category, one model's wide or stray finding can swallow others' (seen with
+    qwen2.5:3b), which reads as agreement that is not there."""
     flat = sorted(
         ((m, f) for m, fs in per_model.items() for f in fs),
         key=lambda x: (x[1].file, x[1].line_start, x[1].line_end, x[0]),
     )
     groups: list[_Group] = []
     for model_id, f in flat:
-        target = next((g for g in groups if g.accepts(f, tol)), None)
+        target = next((g for g in groups if g.accepts(f, tol, by_category)), None)
         if target is None:
-            groups.append(_Group(f.file, f.line_start, f.line_end, {model_id: f}))
+            groups.append(_Group(f.file, f.line_start, f.line_end, {model_id: f}, f.category))
         elif model_id not in target.members:
             target.members[model_id] = f
             target.start, target.end = min(target.start, f.line_start), max(target.end, f.line_end)
@@ -77,6 +85,7 @@ def build_tally(
     threshold: float,
     tol: int,
     tool_findings: list[ToolFinding] | None = None,
+    by_category: bool = True,
 ) -> Tally:
     answering = list(outputs)
 
@@ -113,7 +122,7 @@ def build_tally(
                 c.vote_accept = c is top and win
         clusters = sorted(scored, key=lambda c: -c.weighted_score)
     else:
-        for i, g in enumerate(group_findings(findings, tol), 1):
+        for i, g in enumerate(group_findings(findings, tol, by_category), 1):
             category = _plurality_category(g, pack_categories, outputs)
             total = sum(w(m, category)[0] for m in answering)
             sup = []
