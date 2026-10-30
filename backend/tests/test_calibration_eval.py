@@ -51,6 +51,7 @@ async def test_calibration_refuses_when_model_broken(debate, registry, store):
 async def test_eval_produces_six_conditions(debate, registry):
     m = ids(registry)
     models = [m["sharp"], m["sloppy"], m["stubborn"]]
+    debate.grounder = None  # condition 6 is covered in test_grounding.py
     await calibrate_many(debate, models, ["code-review-dev"])
     res = await run_eval(debate, EvalRequest(pack="code-review-dev", model_ids=models,
                                              judge_model_id=m["judge-skeptic"]))

@@ -121,7 +121,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                       ollama=OllamaHealth(reachable=version is not None, base_url=settings.ollama_url,
                                           version=version),
                       models=len(state.store.list_models()),
-                      fake_models_enabled=settings.enable_fake)
+                      fake_models_enabled=settings.enable_fake,
+                      grounding={"semgrep": state.debate.grounder is not None})
 
     @app.get("/packs", response_model=list[Pack])
     async def packs():

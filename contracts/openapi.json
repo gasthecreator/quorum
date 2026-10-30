@@ -223,8 +223,20 @@
             "title": "Supporters",
             "type": "array"
           },
+          "tool_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Rule"
+          },
           "tool_verified": {
             "default": false,
+            "description": "A static-analysis tool confirmed it. Such a cluster is always accepted, and the judge cannot reject it. May have no supporters (the tool found what no model did).",
             "title": "Tool Verified",
             "type": "boolean"
           },
@@ -750,6 +762,14 @@
             "default": false,
             "title": "Fake Models Enabled",
             "type": "boolean"
+          },
+          "grounding": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "description": "Static-analysis tools that are installed, e.g. {semgrep: true}",
+            "title": "Grounding",
+            "type": "object"
           },
           "models": {
             "title": "Models",
@@ -1353,6 +1373,12 @@
             "title": "Text",
             "type": "string"
           },
+          "tool_verified": {
+            "default": false,
+            "description": "A static-analysis tool confirmed at least one finding behind this verdict. Confidence still reflects the panel only, so it can be low or 0",
+            "title": "Tool Verified",
+            "type": "boolean"
+          },
           "verdict": {
             "enum": [
               "issue",
@@ -1423,6 +1449,12 @@
             ],
             "description": "Run the framer before round 0. Default: true for escalate=always, false for auto (so an easy input costs exactly 2 model calls)",
             "title": "Frame"
+          },
+          "ground": {
+            "default": false,
+            "description": "Run a static analyser (Semgrep) over the input. A tool-confirmed finding is accepted regardless of the vote. Review packs only; a no-op if the tool is missing",
+            "title": "Ground",
+            "type": "boolean"
           },
           "input": {
             "maxLength": 60000,
@@ -1656,7 +1688,7 @@
   },
   "info": {
     "title": "Quorum",
-    "version": "1.1.0"
+    "version": "1.2.0"
   },
   "openapi": "3.1.0",
   "paths": {

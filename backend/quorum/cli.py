@@ -67,6 +67,11 @@ def _fmt_event(event: str, d: dict) -> str | None:
     if event == "framed":
         return ("Framed: " + (d["restatement"] if d["restatement"] else f"(failed: {d['error']})")
                 + (f"  !! steering text in the framing: {d['input_flags']}" if d["input_flags"] else ""))
+    if event == "grounded":
+        if not d["available"] or d["error"]:
+            return f"Static analysis ({d['tool']}): not run - {d['error']}"
+        got = "; ".join(f"L{f['line_start']} {f['category']} ({f['rule_id']})" for f in d["findings"])
+        return f"\nStatic analysis ({d['tool']}, {d['duration_ms']} ms): {got or 'nothing found'}"
     if event == "escalated":
         return (f"  >> escalated ({d['reason']}): {d['detail']} adding {len(d['added_model_ids'])} model(s)")
     if event == "finished_early":
@@ -92,9 +97,10 @@ def _fmt_event(event: str, d: dict) -> str | None:
         for c in d["clusters"]:
             sup = ",".join(f"{s['alias']}({s['weight']:.2f})" for s in c["supporters"])
             at = f"L{c['line_start']}-{c['line_end']} " if c["kind"] == "finding" else ""
+            tool = f" [TOOL-VERIFIED {c['tool_rule']}]" if c.get("tool_verified") else ""
             lines.append(f"  {c['id']:<6} {at}{c['category'] or c['verdict']}: score "
                          f"{c['weighted_score']:.2f}, share {c['support_share']:.2f} "
-                         f"{'ACCEPT' if c['vote_accept'] else 'reject'}  <- {sup}")
+                         f"{'ACCEPT' if c['vote_accept'] else 'reject'}{tool}  <- {sup or 'no model'}")
         return "\n".join(lines)
     if event == "judge_ruling":
         lines = [f"\nJudge ({d['judge_model_id']}): "
@@ -146,7 +152,7 @@ async def _review(a) -> int:
         raise SystemExit("no models available. Pull one with Ollama or set QUORUM_ENABLE_FAKE=1")
     judge = _resolve(state, [a.judge])[0] if a.judge else None
     req = RunRequest(pack=a.pack, input=text, model_ids=models, judge_model_id=judge,
-                     max_rounds=a.rounds, seed=a.seed, escalate=a.escalate,
+                     max_rounds=a.rounds, seed=a.seed, escalate=a.escalate, ground=a.ground,
                      frame=False if a.no_frame else None)
     run_id = uuid.uuid4().hex[:10]
     events: list[dict] = []
@@ -289,6 +295,8 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--json", action="store_true")
     r.add_argument("--escalate", choices=["auto", "always"], default="always",
                    help="auto: two models first, full debate only if they disagree")
+    r.add_argument("--ground", action="store_true",
+                   help="run Semgrep over the input; a tool-confirmed finding outranks the vote")
     r.add_argument("--no-frame", action="store_true", help="skip the neutral framing call")
     r.add_argument("--export", help="write a transcript to this .md or .html file")
 

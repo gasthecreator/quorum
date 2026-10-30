@@ -102,6 +102,12 @@ def to_markdown(run: dict) -> str:
             out += ["", f"_Agreement after round {d['round']}: {_pct(d['agreement'])}_"]
         elif ev == "stopped":
             out += ["", f"**Stopped:** {d['reason']} (round {d['round']})"]
+        elif ev == "grounded":
+            got = "; ".join(f"line {f['line_start']} {_md(f['category'])} ({_md(f['rule_id'])})"
+                            for f in d["findings"])
+            out += ["", f"**Static analysis ({_md(d['tool'])}):** "
+                        + (f"not run - {_md(d['error'])}" if d["error"] or not d["available"]
+                           else got or "nothing found")]
         elif ev == "finished_early":
             out += ["", f"**Finished early:** {_md(d['reason'])} "
                         f"({d['calls_saved']} model calls saved)"]
@@ -248,6 +254,11 @@ def to_html(run: dict) -> str:
             p.append(f"<p class=mut>Agreement after round {d['round']}: {_pct(d['agreement'])}</p>")
         elif ev == "stopped":
             p.append(f"<p><strong>Stopped:</strong> {_h(d['reason'])} (round {d['round']})</p>")
+        elif ev == "grounded":
+            got = "; ".join(f"line {f['line_start']} {f['category']} ({f['rule_id']})" for f in d["findings"])
+            p.append(f"<p><strong>Static analysis ({_h(d['tool'])}):</strong> "
+                     + (f"not run - {_h(d['error'])}" if d["error"] or not d["available"]
+                        else _h(got or "nothing found")) + "</p>")
         elif ev == "finished_early":
             p.append(f"<p><strong>Finished early:</strong> {_h(d['reason'])} "
                      f"({d['calls_saved']} model calls saved)</p>")

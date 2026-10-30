@@ -1,7 +1,8 @@
 # Quorum contract
 
-Version: see [`VERSION`](VERSION) (currently 1.1.0, which adds the framer, critique round, richer
-`final`, escalation, export and locality; nothing from 1.0 was removed or renamed). This folder is the only surface the backend and
+Version: see [`VERSION`](VERSION) (currently 1.2.0). 1.1 added the framer, critique round, richer `final`,
+escalation, export and locality; 1.2 adds tool grounding (`ground`, `grounded`, tool-verified clusters).
+Nothing was removed or renamed since 1.0. This folder is the only surface the backend and
 frontend share. The Python models in `backend/quorum/schemas.py` are the source of truth;
 `backend/scripts/export_contracts.py` generates the JSON files here, and a test fails if they drift.
 
@@ -64,6 +65,7 @@ round_started(0) model_message x N round_finished(0)        # blind round, messa
 [round_started(1) model_message x N round_finished(1)]      # up to max_rounds visible rounds
 [round_started(2) ...]
 stopped(reason: consensus | stalemate | max_rounds | budget)   # or finished_early, never both
+[grounded]                                                   # ground=true, review packs: static-analysis results
 tally  ->  judge_ruling  ->  final
 ```
 
@@ -84,6 +86,15 @@ A run that ends in `error` has no `final`. `model_message` with `error` set mean
 answer that round (its position is carried over, or `unsure` at confidence 0 in round 0).
 `escalate: "always"` (the default) skips all of that and runs the full debate. `frame` defaults to
 true for `always` and false for `auto`, so an easy input costs exactly two model calls.
+
+**Tool grounding** (`ground: true`, review packs only, off by default): after the debate stops, Semgrep
+is run over the pasted input (a diff is analysed with its line numbers preserved) and a `grounded`
+event reports what it found. A finding that overlaps a cluster marks it `tool_verified: true` and
+accepts it whatever the vote said; a finding no panelist raised becomes its own cluster
+(`id` "t1", ...) with `supporters: []`, `weighted_score: 0` and `vote_accept: true`. The judge cannot
+reject a tool-verified cluster. `grounded.available` is false (with `error`) when Semgrep is missing,
+and the run carries on; `GET /health` reports `grounding.semgrep`. The rules are heuristics written for
+precision, cover Python only, and live in `backend/quorum/rules/python.yml`.
 
 **The framer** (`framed`): one extra call, made by the judge model, that restates the input in
 neutral words so a leading prompt cannot steer every model the same way. Debaters get it as a fenced
@@ -114,6 +125,7 @@ Things worth showing in the UI, and where they come from:
 | Top fix with a patch | `final.next_step.text`, `.patch` (null unless a panelist supplied replacement code) |
 | "Answered by 2 models" vs "escalated, because ..." | `finished_early` (`calls_saved` is a lower bound) or `escalated.reason / detail`; also `run_started.escalate` |
 | Judge skipped | `judge_ruling.skipped` |
+| "Confirmed by a tool" badge; no supporters | `cluster.tool_verified`, `cluster.tool_rule`, `supporters == []`; `recommendation.tool_verified` (its confidence still reflects the panel, so it can be 0) |
 | Local vs hosted badge | `GET /models[].locality` (a hosted model sends the diff off this machine) |
 
 `tally.clusters[].kind` is `finding` for the code-review pack (lines, category, severity) and
@@ -199,6 +211,7 @@ request that produced it.
 | `claim_check` | Verdict clusters for the claim pack |
 | `escalated` | `escalate: auto`, the first two disagree, the third joins round 0 |
 | `finished_early` | `escalate: auto`, two agreeing models, no framer, judge skipped, 2 calls |
+| `grounded` | `ground: true`: Semgrep finds an off-by-one no panelist saw; a tool-only cluster is accepted |
 | `error` | A stream that ends in `error` |
 
 These streams come from the **simulated models** (`QUORUM_ENABLE_FAKE=1`), which are rule-based
