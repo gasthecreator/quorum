@@ -25,6 +25,22 @@ quorum eval --pack code-review --models qwen2.5:3b,llama3.2:3b,gemma3:4b --judge
 quorum profiles
 ```
 
+## MCP server for coding agents (B17)
+
+```bash
+pip install -e ".[mcp]"
+quorum mcp                      # stdio MCP server; also installed as `quorum-mcp`
+```
+
+Register it with an MCP-capable agent, for example `claude mcp add quorum -- quorum mcp`. Tools:
+`second_opinion(code, pack?, models?, judge?, rounds?, escalate?, ground?)` returns the verdict,
+confirmed and disputed findings with line numbers of the text passed in, a suggested fix when a
+panelist gave one, who dissented, whether the judge overrode the vote, and the cost;
+`list_models`, `list_packs`, and `get_report(run_id)` for the full transcript. It runs in-process
+against the same `~/.quorum` database, so calibrated profiles carry over, and `escalate` defaults to
+`auto` so an easy diff costs two model calls. Tested through the MCP SDK client over in-memory and
+real stdio transports; not yet tried inside a specific agent product.
+
 ## Offline development without a model server
 
 `QUORUM_ENABLE_FAKE=1` registers five **simulated** models (`fake:sharp`, `fake:sloppy`,
