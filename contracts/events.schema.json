@@ -1,0 +1,1046 @@
+{
+  "contract_version": "1.0.0",
+  "envelope": {
+    "additionalProperties": false,
+    "description": "One SSE frame: `id: <seq>`, `event: <event>`, `data: <json of data>`.",
+    "properties": {
+      "data": {
+        "additionalProperties": true,
+        "title": "Data",
+        "type": "object"
+      },
+      "event": {
+        "title": "Event",
+        "type": "string"
+      },
+      "seq": {
+        "title": "Seq",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "seq",
+      "event",
+      "data"
+    ],
+    "title": "EventEnvelope",
+    "type": "object"
+  },
+  "job_events": {
+    "job_done": {
+      "additionalProperties": false,
+      "properties": {
+        "job_id": {
+          "title": "Job Id",
+          "type": "string"
+        },
+        "result": {
+          "additionalProperties": true,
+          "title": "Result",
+          "type": "object"
+        }
+      },
+      "required": [
+        "job_id",
+        "result"
+      ],
+      "title": "JobDone",
+      "type": "object"
+    },
+    "job_error": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "job_id": {
+          "title": "Job Id",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id",
+        "code",
+        "message"
+      ],
+      "title": "JobError",
+      "type": "object"
+    },
+    "job_progress": {
+      "additionalProperties": false,
+      "properties": {
+        "done": {
+          "title": "Done",
+          "type": "integer"
+        },
+        "job_id": {
+          "title": "Job Id",
+          "type": "string"
+        },
+        "message": {
+          "default": "",
+          "title": "Message",
+          "type": "string"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "job_id",
+        "done",
+        "total"
+      ],
+      "title": "JobProgress",
+      "type": "object"
+    }
+  },
+  "run_events": {
+    "error": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ErrorEvent",
+      "type": "object"
+    },
+    "final": {
+      "$defs": {
+        "Cluster": {
+          "additionalProperties": false,
+          "properties": {
+            "category": {
+              "title": "Category",
+              "type": "string"
+            },
+            "claim": {
+              "title": "Claim",
+              "type": "string"
+            },
+            "evidence": {
+              "default": "",
+              "title": "Evidence",
+              "type": "string"
+            },
+            "file": {
+              "default": "",
+              "title": "File",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "finding",
+                "verdict"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "line_end": {
+              "default": 0,
+              "title": "Line End",
+              "type": "integer"
+            },
+            "line_start": {
+              "default": 0,
+              "title": "Line Start",
+              "type": "integer"
+            },
+            "severity": {
+              "default": "medium",
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ],
+              "title": "Severity",
+              "type": "string"
+            },
+            "support_share": {
+              "description": "supporters' weight / total_weight",
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Support Share",
+              "type": "number"
+            },
+            "supporters": {
+              "items": {
+                "$ref": "#/$defs/Supporter"
+              },
+              "title": "Supporters",
+              "type": "array"
+            },
+            "tool_verified": {
+              "default": false,
+              "title": "Tool Verified",
+              "type": "boolean"
+            },
+            "total_weight": {
+              "description": "Sum of the weights of all answering debaters",
+              "title": "Total Weight",
+              "type": "number"
+            },
+            "verdict": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "issue",
+                    "no_issue",
+                    "true",
+                    "false",
+                    "unsure"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Set when kind is 'verdict'",
+              "title": "Verdict"
+            },
+            "vote_accept": {
+              "description": "Weighted vote outcome, before the judge",
+              "title": "Vote Accept",
+              "type": "boolean"
+            },
+            "weighted_score": {
+              "description": "sum(weight * confidence) over supporters",
+              "title": "Weighted Score",
+              "type": "number"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "category",
+            "claim",
+            "supporters",
+            "weighted_score",
+            "total_weight",
+            "support_share",
+            "vote_accept"
+          ],
+          "title": "Cluster",
+          "type": "object"
+        },
+        "Dissent": {
+          "additionalProperties": false,
+          "properties": {
+            "alias": {
+              "title": "Alias",
+              "type": "string"
+            },
+            "confidence": {
+              "title": "Confidence",
+              "type": "number"
+            },
+            "finding_ids": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Finding Ids",
+              "type": "array"
+            },
+            "model_id": {
+              "title": "Model Id",
+              "type": "string"
+            },
+            "reason": {
+              "default": "",
+              "title": "Reason",
+              "type": "string"
+            },
+            "verdict": {
+              "enum": [
+                "issue",
+                "no_issue",
+                "true",
+                "false",
+                "unsure"
+              ],
+              "title": "Verdict",
+              "type": "string"
+            }
+          },
+          "required": [
+            "model_id",
+            "alias",
+            "verdict",
+            "confidence"
+          ],
+          "title": "Dissent",
+          "type": "object"
+        },
+        "FinalVerdict": {
+          "additionalProperties": false,
+          "properties": {
+            "overall": {
+              "enum": [
+                "issue",
+                "no_issue",
+                "true",
+                "false",
+                "unsure"
+              ],
+              "title": "Overall",
+              "type": "string"
+            },
+            "summary": {
+              "title": "Summary",
+              "type": "string"
+            }
+          },
+          "required": [
+            "overall",
+            "summary"
+          ],
+          "title": "FinalVerdict",
+          "type": "object"
+        },
+        "Supporter": {
+          "additionalProperties": false,
+          "properties": {
+            "alias": {
+              "title": "Alias",
+              "type": "string"
+            },
+            "confidence": {
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Confidence",
+              "type": "number"
+            },
+            "finding_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Finding Id"
+            },
+            "model_id": {
+              "title": "Model Id",
+              "type": "string"
+            },
+            "weight": {
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Weight",
+              "type": "number"
+            },
+            "weight_source": {
+              "enum": [
+                "measured",
+                "pooled",
+                "default"
+              ],
+              "title": "Weight Source",
+              "type": "string"
+            }
+          },
+          "required": [
+            "model_id",
+            "alias",
+            "confidence",
+            "weight",
+            "weight_source"
+          ],
+          "title": "Supporter",
+          "type": "object"
+        },
+        "Usage": {
+          "additionalProperties": false,
+          "properties": {
+            "calls": {
+              "default": 0,
+              "title": "Calls",
+              "type": "integer"
+            },
+            "completion_tokens": {
+              "default": 0,
+              "title": "Completion Tokens",
+              "type": "integer"
+            },
+            "elapsed_ms": {
+              "default": 0,
+              "title": "Elapsed Ms",
+              "type": "integer"
+            },
+            "prompt_tokens": {
+              "default": 0,
+              "title": "Prompt Tokens",
+              "type": "integer"
+            }
+          },
+          "title": "Usage",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "confirmed_findings": {
+          "items": {
+            "$ref": "#/$defs/Cluster"
+          },
+          "title": "Confirmed Findings",
+          "type": "array"
+        },
+        "disputed_findings": {
+          "items": {
+            "$ref": "#/$defs/Cluster"
+          },
+          "title": "Disputed Findings",
+          "type": "array"
+        },
+        "dissent": {
+          "items": {
+            "$ref": "#/$defs/Dissent"
+          },
+          "title": "Dissent",
+          "type": "array"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        },
+        "verdict": {
+          "$ref": "#/$defs/FinalVerdict"
+        }
+      },
+      "required": [
+        "run_id",
+        "verdict",
+        "confirmed_findings",
+        "disputed_findings",
+        "dissent",
+        "usage"
+      ],
+      "title": "Final",
+      "type": "object"
+    },
+    "judge_ruling": {
+      "$defs": {
+        "ClusterRuling": {
+          "additionalProperties": false,
+          "properties": {
+            "accept": {
+              "title": "Accept",
+              "type": "boolean"
+            },
+            "cluster_id": {
+              "title": "Cluster Id",
+              "type": "string"
+            },
+            "overrides_vote": {
+              "title": "Overrides Vote",
+              "type": "boolean"
+            },
+            "reason": {
+              "default": "",
+              "title": "Reason",
+              "type": "string"
+            },
+            "vote_accept": {
+              "title": "Vote Accept",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "cluster_id",
+            "accept",
+            "vote_accept",
+            "overrides_vote"
+          ],
+          "title": "ClusterRuling",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "injection_flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Injection Flags",
+          "type": "array"
+        },
+        "judge_model_id": {
+          "title": "Judge Model Id",
+          "type": "string"
+        },
+        "overrides_vote": {
+          "title": "Overrides Vote",
+          "type": "boolean"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "rulings": {
+          "items": {
+            "$ref": "#/$defs/ClusterRuling"
+          },
+          "title": "Rulings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "judge_model_id",
+        "rulings",
+        "overrides_vote",
+        "reason"
+      ],
+      "title": "JudgeRuling",
+      "type": "object"
+    },
+    "model_message": {
+      "$defs": {
+        "Finding": {
+          "additionalProperties": false,
+          "properties": {
+            "category": {
+              "maxLength": 64,
+              "title": "Category",
+              "type": "string"
+            },
+            "claim": {
+              "maxLength": 600,
+              "title": "Claim",
+              "type": "string"
+            },
+            "evidence": {
+              "default": "",
+              "maxLength": 1200,
+              "title": "Evidence",
+              "type": "string"
+            },
+            "file": {
+              "default": "",
+              "maxLength": 256,
+              "title": "File",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "line_end": {
+              "minimum": 0,
+              "title": "Line End",
+              "type": "integer"
+            },
+            "line_start": {
+              "minimum": 0,
+              "title": "Line Start",
+              "type": "integer"
+            },
+            "severity": {
+              "default": "medium",
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ],
+              "title": "Severity",
+              "type": "string"
+            },
+            "tool_verified": {
+              "default": false,
+              "title": "Tool Verified",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "category",
+            "line_start",
+            "line_end",
+            "claim",
+            "id"
+          ],
+          "title": "Finding",
+          "type": "object"
+        },
+        "Position": {
+          "additionalProperties": false,
+          "properties": {
+            "confidence": {
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Confidence",
+              "type": "number"
+            },
+            "verdict": {
+              "enum": [
+                "issue",
+                "no_issue",
+                "true",
+                "false",
+                "unsure"
+              ],
+              "title": "Verdict",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "confidence"
+          ],
+          "title": "Position",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "alias": {
+          "title": "Alias",
+          "type": "string"
+        },
+        "changed": {
+          "title": "Changed",
+          "type": "boolean"
+        },
+        "changed_reason": {
+          "title": "Changed Reason",
+          "type": "string"
+        },
+        "completion_tokens": {
+          "default": 0,
+          "title": "Completion Tokens",
+          "type": "integer"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Set when the model failed to answer",
+          "title": "Error"
+        },
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/Finding"
+          },
+          "title": "Findings",
+          "type": "array"
+        },
+        "model_id": {
+          "title": "Model Id",
+          "type": "string"
+        },
+        "position": {
+          "$ref": "#/$defs/Position"
+        },
+        "prompt_tokens": {
+          "default": 0,
+          "title": "Prompt Tokens",
+          "type": "integer"
+        },
+        "round": {
+          "title": "Round",
+          "type": "integer"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "round",
+        "model_id",
+        "alias",
+        "position",
+        "findings",
+        "changed",
+        "changed_reason",
+        "text"
+      ],
+      "title": "ModelMessage",
+      "type": "object"
+    },
+    "round_finished": {
+      "additionalProperties": false,
+      "properties": {
+        "agreement": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Agreement",
+          "type": "number"
+        },
+        "round": {
+          "title": "Round",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "round",
+        "agreement"
+      ],
+      "title": "RoundFinished",
+      "type": "object"
+    },
+    "round_started": {
+      "additionalProperties": false,
+      "properties": {
+        "round": {
+          "description": "0 is the blind round",
+          "minimum": 0,
+          "title": "Round",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "round"
+      ],
+      "title": "RoundStarted",
+      "type": "object"
+    },
+    "run_started": {
+      "additionalProperties": false,
+      "properties": {
+        "aliases": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "object"
+        },
+        "input_flags": {
+          "description": "Suspected prompt-injection patterns found in the input",
+          "items": {
+            "type": "string"
+          },
+          "title": "Input Flags",
+          "type": "array"
+        },
+        "judge_model_id": {
+          "title": "Judge Model Id",
+          "type": "string"
+        },
+        "max_rounds": {
+          "title": "Max Rounds",
+          "type": "integer"
+        },
+        "mode": {
+          "enum": [
+            "review",
+            "claim"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "model_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Model Ids",
+          "type": "array"
+        },
+        "pack": {
+          "title": "Pack",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "pack",
+        "mode",
+        "model_ids",
+        "aliases",
+        "judge_model_id",
+        "max_rounds"
+      ],
+      "title": "RunStarted",
+      "type": "object"
+    },
+    "stopped": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "enum": [
+            "consensus",
+            "stalemate",
+            "max_rounds",
+            "budget"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "round": {
+          "title": "Round",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "reason",
+        "round"
+      ],
+      "title": "Stopped",
+      "type": "object"
+    },
+    "tally": {
+      "$defs": {
+        "Cluster": {
+          "additionalProperties": false,
+          "properties": {
+            "category": {
+              "title": "Category",
+              "type": "string"
+            },
+            "claim": {
+              "title": "Claim",
+              "type": "string"
+            },
+            "evidence": {
+              "default": "",
+              "title": "Evidence",
+              "type": "string"
+            },
+            "file": {
+              "default": "",
+              "title": "File",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "finding",
+                "verdict"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "line_end": {
+              "default": 0,
+              "title": "Line End",
+              "type": "integer"
+            },
+            "line_start": {
+              "default": 0,
+              "title": "Line Start",
+              "type": "integer"
+            },
+            "severity": {
+              "default": "medium",
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ],
+              "title": "Severity",
+              "type": "string"
+            },
+            "support_share": {
+              "description": "supporters' weight / total_weight",
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Support Share",
+              "type": "number"
+            },
+            "supporters": {
+              "items": {
+                "$ref": "#/$defs/Supporter"
+              },
+              "title": "Supporters",
+              "type": "array"
+            },
+            "tool_verified": {
+              "default": false,
+              "title": "Tool Verified",
+              "type": "boolean"
+            },
+            "total_weight": {
+              "description": "Sum of the weights of all answering debaters",
+              "title": "Total Weight",
+              "type": "number"
+            },
+            "verdict": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "issue",
+                    "no_issue",
+                    "true",
+                    "false",
+                    "unsure"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Set when kind is 'verdict'",
+              "title": "Verdict"
+            },
+            "vote_accept": {
+              "description": "Weighted vote outcome, before the judge",
+              "title": "Vote Accept",
+              "type": "boolean"
+            },
+            "weighted_score": {
+              "description": "sum(weight * confidence) over supporters",
+              "title": "Weighted Score",
+              "type": "number"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "category",
+            "claim",
+            "supporters",
+            "weighted_score",
+            "total_weight",
+            "support_share",
+            "vote_accept"
+          ],
+          "title": "Cluster",
+          "type": "object"
+        },
+        "Supporter": {
+          "additionalProperties": false,
+          "properties": {
+            "alias": {
+              "title": "Alias",
+              "type": "string"
+            },
+            "confidence": {
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Confidence",
+              "type": "number"
+            },
+            "finding_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Finding Id"
+            },
+            "model_id": {
+              "title": "Model Id",
+              "type": "string"
+            },
+            "weight": {
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Weight",
+              "type": "number"
+            },
+            "weight_source": {
+              "enum": [
+                "measured",
+                "pooled",
+                "default"
+              ],
+              "title": "Weight Source",
+              "type": "string"
+            }
+          },
+          "required": [
+            "model_id",
+            "alias",
+            "confidence",
+            "weight",
+            "weight_source"
+          ],
+          "title": "Supporter",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "clusters": {
+          "items": {
+            "$ref": "#/$defs/Cluster"
+          },
+          "title": "Clusters",
+          "type": "array"
+        },
+        "threshold": {
+          "description": "support_share above which a cluster is accepted",
+          "title": "Threshold",
+          "type": "number"
+        }
+      },
+      "required": [
+        "clusters",
+        "threshold"
+      ],
+      "title": "Tally",
+      "type": "object"
+    }
+  },
+  "terminal_events": {
+    "job": [
+      "job_done",
+      "job_error"
+    ],
+    "run": [
+      "final",
+      "error"
+    ]
+  }
+}

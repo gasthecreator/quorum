@@ -1,0 +1,1898 @@
+{
+  "components": {
+    "schemas": {
+      "CalibrateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Use only the first N items",
+            "title": "Limit"
+          },
+          "model_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Model Ids",
+            "type": "array"
+          },
+          "pack": {
+            "title": "Pack",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_ids",
+          "pack"
+        ],
+        "title": "CalibrateRequest",
+        "type": "object"
+      },
+      "Cluster": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "claim": {
+            "title": "Claim",
+            "type": "string"
+          },
+          "evidence": {
+            "default": "",
+            "title": "Evidence",
+            "type": "string"
+          },
+          "file": {
+            "default": "",
+            "title": "File",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "finding",
+              "verdict"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "line_end": {
+            "default": 0,
+            "title": "Line End",
+            "type": "integer"
+          },
+          "line_start": {
+            "default": 0,
+            "title": "Line Start",
+            "type": "integer"
+          },
+          "severity": {
+            "default": "medium",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "support_share": {
+            "description": "supporters' weight / total_weight",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Support Share",
+            "type": "number"
+          },
+          "supporters": {
+            "items": {
+              "$ref": "#/components/schemas/Supporter"
+            },
+            "title": "Supporters",
+            "type": "array"
+          },
+          "tool_verified": {
+            "default": false,
+            "title": "Tool Verified",
+            "type": "boolean"
+          },
+          "total_weight": {
+            "description": "Sum of the weights of all answering debaters",
+            "title": "Total Weight",
+            "type": "number"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "enum": [
+                  "issue",
+                  "no_issue",
+                  "true",
+                  "false",
+                  "unsure"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when kind is 'verdict'",
+            "title": "Verdict"
+          },
+          "vote_accept": {
+            "description": "Weighted vote outcome, before the judge",
+            "title": "Vote Accept",
+            "type": "boolean"
+          },
+          "weighted_score": {
+            "description": "sum(weight * confidence) over supporters",
+            "title": "Weighted Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "category",
+          "claim",
+          "supporters",
+          "weighted_score",
+          "total_weight",
+          "support_share",
+          "vote_accept"
+        ],
+        "title": "Cluster",
+        "type": "object"
+      },
+      "ConditionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "accuracy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Interval"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "f1": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Interval"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fn": {
+            "default": 0,
+            "title": "Fn",
+            "type": "integer"
+          },
+          "fp": {
+            "default": 0,
+            "title": "Fp",
+            "type": "integer"
+          },
+          "fpr": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Interval"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "n_items": {
+            "default": 0,
+            "title": "N Items",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "precision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Interval"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason_unavailable": {
+            "default": "",
+            "title": "Reason Unavailable",
+            "type": "string"
+          },
+          "recall": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Interval"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tn": {
+            "default": 0,
+            "title": "Tn",
+            "type": "integer"
+          },
+          "tp": {
+            "default": 0,
+            "title": "Tp",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "available"
+        ],
+        "title": "ConditionResult",
+        "type": "object"
+      },
+      "DebateMovement": {
+        "additionalProperties": false,
+        "properties": {
+          "neutral": {
+            "title": "Neutral",
+            "type": "integer"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "toward_correct": {
+            "title": "Toward Correct",
+            "type": "integer"
+          },
+          "toward_wrong": {
+            "title": "Toward Wrong",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "toward_correct",
+          "toward_wrong",
+          "neutral"
+        ],
+        "title": "DebateMovement",
+        "type": "object"
+      },
+      "Dissent": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "title": "Alias",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "finding_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "issue",
+              "no_issue",
+              "true",
+              "false",
+              "unsure"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_id",
+          "alias",
+          "verdict",
+          "confidence"
+        ],
+        "title": "Dissent",
+        "type": "object"
+      },
+      "EvalRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "judge_model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judge Model Id"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit"
+          },
+          "max_rounds": {
+            "default": 2,
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Max Rounds",
+            "type": "integer"
+          },
+          "model_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Model Ids",
+            "type": "array"
+          },
+          "pack": {
+            "title": "Pack",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pack",
+          "model_ids"
+        ],
+        "title": "EvalRequest",
+        "type": "object"
+      },
+      "EvalResult": {
+        "additionalProperties": false,
+        "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/ConditionResult"
+            },
+            "title": "Conditions",
+            "type": "array"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "debate_movement": {
+            "$ref": "#/components/schemas/DebateMovement"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "judge_model_id": {
+            "title": "Judge Model Id",
+            "type": "string"
+          },
+          "max_rounds": {
+            "title": "Max Rounds",
+            "type": "integer"
+          },
+          "model_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Model Ids",
+            "type": "array"
+          },
+          "n_items": {
+            "title": "N Items",
+            "type": "integer"
+          },
+          "n_negative": {
+            "description": "Clean controls, or true claims",
+            "title": "N Negative",
+            "type": "integer"
+          },
+          "n_positive": {
+            "description": "Buggy diffs, or false claims",
+            "title": "N Positive",
+            "type": "integer"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "pack": {
+            "title": "Pack",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "pack",
+          "model_ids",
+          "judge_model_id",
+          "max_rounds",
+          "n_items",
+          "n_positive",
+          "n_negative",
+          "conditions",
+          "debate_movement"
+        ],
+        "title": "EvalResult",
+        "type": "object"
+      },
+      "EventEnvelope": {
+        "additionalProperties": false,
+        "description": "One SSE frame: `id: <seq>`, `event: <event>`, `data: <json of data>`.",
+        "properties": {
+          "data": {
+            "additionalProperties": true,
+            "title": "Data",
+            "type": "object"
+          },
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "event",
+          "data"
+        ],
+        "title": "EventEnvelope",
+        "type": "object"
+      },
+      "Final": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed_findings": {
+            "items": {
+              "$ref": "#/components/schemas/Cluster"
+            },
+            "title": "Confirmed Findings",
+            "type": "array"
+          },
+          "disputed_findings": {
+            "items": {
+              "$ref": "#/components/schemas/Cluster"
+            },
+            "title": "Disputed Findings",
+            "type": "array"
+          },
+          "dissent": {
+            "items": {
+              "$ref": "#/components/schemas/Dissent"
+            },
+            "title": "Dissent",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/FinalVerdict"
+          }
+        },
+        "required": [
+          "run_id",
+          "verdict",
+          "confirmed_findings",
+          "disputed_findings",
+          "dissent",
+          "usage"
+        ],
+        "title": "Final",
+        "type": "object"
+      },
+      "FinalVerdict": {
+        "additionalProperties": false,
+        "properties": {
+          "overall": {
+            "enum": [
+              "issue",
+              "no_issue",
+              "true",
+              "false",
+              "unsure"
+            ],
+            "title": "Overall",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "overall",
+          "summary"
+        ],
+        "title": "FinalVerdict",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Health": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "fake_models_enabled": {
+            "default": false,
+            "title": "Fake Models Enabled",
+            "type": "boolean"
+          },
+          "models": {
+            "title": "Models",
+            "type": "integer"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "ollama": {
+            "$ref": "#/components/schemas/OllamaHealth"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "version",
+          "contract_version",
+          "ollama",
+          "models"
+        ],
+        "title": "Health",
+        "type": "object"
+      },
+      "Interval": {
+        "additionalProperties": false,
+        "properties": {
+          "hi": {
+            "title": "Hi",
+            "type": "number"
+          },
+          "lo": {
+            "title": "Lo",
+            "type": "number"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "value",
+          "lo",
+          "hi"
+        ],
+        "title": "Interval",
+        "type": "object"
+      },
+      "Job": {
+        "additionalProperties": false,
+        "properties": {
+          "done": {
+            "default": 0,
+            "title": "Done",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "calibrate",
+              "eval"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status"
+        ],
+        "title": "Job",
+        "type": "object"
+      },
+      "JobCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "JobCreated",
+        "type": "object"
+      },
+      "ModelCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "api_key_env": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Name of an environment variable holding the key. Never the key.",
+            "title": "Api Key Env"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Required for openai_compat; e.g. http://127.0.0.1:1234/v1",
+            "title": "Base Url"
+          },
+          "calibrate": {
+            "default": true,
+            "title": "Calibrate",
+            "type": "boolean"
+          },
+          "family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License"
+          },
+          "open_weight": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Weight"
+          },
+          "packs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Packs to calibrate; default all",
+            "title": "Packs"
+          },
+          "provider": {
+            "enum": [
+              "ollama",
+              "openai_compat",
+              "fake"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "tag": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Tag",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "tag"
+        ],
+        "title": "ModelCreate",
+        "type": "object"
+      },
+      "ModelCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "model": {
+            "$ref": "#/components/schemas/ModelInfo"
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "title": "ModelCreated",
+        "type": "object"
+      },
+      "ModelInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "installed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ollama only: tag is pulled locally",
+            "title": "Installed"
+          },
+          "license": {
+            "title": "License",
+            "type": "string"
+          },
+          "open_weight": {
+            "title": "Open Weight",
+            "type": "boolean"
+          },
+          "provider": {
+            "enum": [
+              "ollama",
+              "openai_compat",
+              "fake"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "registered",
+              "calibrating",
+              "ready",
+              "unavailable",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_detail": {
+            "default": "",
+            "title": "Status Detail",
+            "type": "string"
+          },
+          "tag": {
+            "title": "Tag",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "tag",
+          "family",
+          "license",
+          "open_weight",
+          "status"
+        ],
+        "title": "ModelInfo",
+        "type": "object"
+      },
+      "OllamaHealth": {
+        "additionalProperties": false,
+        "properties": {
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "reachable": {
+            "title": "Reachable",
+            "type": "boolean"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "reachable",
+          "base_url"
+        ],
+        "title": "OllamaHealth",
+        "type": "object"
+      },
+      "Pack": {
+        "additionalProperties": false,
+        "properties": {
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "category_descriptions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Category Descriptions",
+            "type": "object"
+          },
+          "corpus": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Paths relative to the pack directory",
+            "propertyNames": {
+              "enum": [
+                "calibration",
+                "heldout"
+              ]
+            },
+            "title": "Corpus",
+            "type": "object"
+          },
+          "corpus_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Filled by the API",
+            "title": "Corpus Counts",
+            "type": "object"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "modes": {
+            "items": {
+              "enum": [
+                "review",
+                "claim"
+              ],
+              "type": "string"
+            },
+            "title": "Modes",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "categories",
+          "modes",
+          "corpus"
+        ],
+        "title": "Pack",
+        "type": "object"
+      },
+      "ProfileCell": {
+        "additionalProperties": false,
+        "properties": {
+          "correct": {
+            "minimum": 0.0,
+            "title": "Correct",
+            "type": "integer"
+          },
+          "lower": {
+            "description": "Wilson 95% lower bound of the rate",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Lower",
+            "type": "number"
+          },
+          "n": {
+            "minimum": 0.0,
+            "title": "N",
+            "type": "integer"
+          },
+          "rate": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Rate",
+            "type": "number"
+          },
+          "weight": {
+            "description": "max(lower, 0.05)",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "n",
+          "correct",
+          "rate",
+          "lower",
+          "weight"
+        ],
+        "title": "ProfileCell",
+        "type": "object"
+      },
+      "ProfilesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "default_weight": {
+            "title": "Default Weight",
+            "type": "number"
+          },
+          "profiles": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/ProfileCell"
+                },
+                "type": "object"
+              },
+              "type": "object"
+            },
+            "description": "model_id -> pack_id -> category -> cell",
+            "title": "Profiles",
+            "type": "object"
+          }
+        },
+        "required": [
+          "profiles",
+          "default_weight"
+        ],
+        "title": "ProfilesResponse",
+        "type": "object"
+      },
+      "RunCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "title": "RunCreated",
+        "type": "object"
+      },
+      "RunRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional category hint used to pick weights",
+            "title": "Category"
+          },
+          "input": {
+            "maxLength": 60000,
+            "minLength": 1,
+            "title": "Input",
+            "type": "string"
+          },
+          "judge_model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judge Model Id"
+          },
+          "max_rounds": {
+            "default": 2,
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Max Rounds",
+            "type": "integer"
+          },
+          "model_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Model Ids",
+            "type": "array"
+          },
+          "pack": {
+            "title": "Pack",
+            "type": "string"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "required": [
+          "pack",
+          "input",
+          "model_ids"
+        ],
+        "title": "RunRequest",
+        "type": "object"
+      },
+      "RunSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/EventEnvelope"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "final": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Final"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request": {
+            "$ref": "#/components/schemas/RunRequest"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "done",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "request",
+          "created_at"
+        ],
+        "title": "RunSummary",
+        "type": "object"
+      },
+      "Supporter": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "title": "Alias",
+            "type": "string"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "finding_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Id"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "weight": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Weight",
+            "type": "number"
+          },
+          "weight_source": {
+            "enum": [
+              "measured",
+              "pooled",
+              "default"
+            ],
+            "title": "Weight Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_id",
+          "alias",
+          "confidence",
+          "weight",
+          "weight_source"
+        ],
+        "title": "Supporter",
+        "type": "object"
+      },
+      "Usage": {
+        "additionalProperties": false,
+        "properties": {
+          "calls": {
+            "default": 0,
+            "title": "Calls",
+            "type": "integer"
+          },
+          "completion_tokens": {
+            "default": 0,
+            "title": "Completion Tokens",
+            "type": "integer"
+          },
+          "elapsed_ms": {
+            "default": 0,
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "prompt_tokens": {
+            "default": 0,
+            "title": "Prompt Tokens",
+            "type": "integer"
+          }
+        },
+        "title": "Usage",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Quorum",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/calibrate": {
+      "post": {
+        "operationId": "calibrate_calibrate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalibrateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Calibrate"
+      }
+    },
+    "/eval": {
+      "post": {
+        "operationId": "start_eval_eval_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Eval"
+      }
+    },
+    "/eval/latest": {
+      "get": {
+        "operationId": "eval_latest_eval_latest_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pack",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pack"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Eval Latest"
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/jobs/{job_id}": {
+      "get": {
+        "operationId": "job_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Job"
+      }
+    },
+    "/jobs/{job_id}/events": {
+      "get": {
+        "operationId": "job_events_jobs__job_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "last-event-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Job Events"
+      }
+    },
+    "/models": {
+      "get": {
+        "operationId": "models_models_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ModelInfo"
+                  },
+                  "title": "Response Models Models Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Models"
+      },
+      "post": {
+        "operationId": "add_model_models_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Model"
+      }
+    },
+    "/packs": {
+      "get": {
+        "operationId": "packs_packs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Pack"
+                  },
+                  "title": "Response Packs Packs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Packs"
+      }
+    },
+    "/profiles": {
+      "get": {
+        "operationId": "profiles_profiles_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pack",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pack"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfilesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Profiles"
+      }
+    },
+    "/runs": {
+      "post": {
+        "operationId": "start_run_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Run"
+      }
+    },
+    "/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run"
+      }
+    },
+    "/runs/{run_id}/events": {
+      "get": {
+        "operationId": "run_events_runs__run_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "last-event-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Events"
+      }
+    }
+  }
+}

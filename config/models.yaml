@@ -1,0 +1,21 @@
+# Model lineup for Quorum. Owned by Gideon; Elikem uses the Model Manager UI instead.
+#
+# Ollama models that are pulled locally are discovered automatically, so this file is only for
+# things discovery cannot know: a pinned judge, and OpenAI-compatible endpoints.
+#
+# The lineup waits on hardware: this machine is an Apple M2 with 8 GB of memory, which fits one
+# 3-4B model (4-bit) at a time. Three families plus a judge means running them one after another.
+
+# Model id used as the judge when a run does not name one (e.g. ollama:qwen2.5:3b). Optional.
+judge: null
+
+# Extra models. Same fields as POST /models.
+models: []
+#  - provider: ollama
+#    tag: llama3.2:3b
+#  - provider: openai_compat
+#    tag: gemma-3-4b-it
+#    base_url: http://127.0.0.1:1234/v1
+#    api_key_env: LMSTUDIO_API_KEY      # name of an env var, never the key itself
+#    open_weight: true
+#    license: Gemma Terms of Use
