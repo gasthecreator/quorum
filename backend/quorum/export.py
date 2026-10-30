@@ -80,7 +80,7 @@ def to_markdown(run: dict) -> str:
         elif ev == "escalated":
             out += ["", f"**Escalated** ({d['reason']}): {_md(d['detail'])}"]
         elif ev == "model_message":
-            who = f"**{d['alias']}** (`{d['model_id']}`)"
+            who = f"**{d['alias']}** (`{d['model_id']}`)" + (f" - {d['role']}" if d.get("role") else "")
             p = d["position"]
             flip = f" — **changed**: {_md(d['changed_reason'])}" if d["changed"] else (
                 f" — _{_md(d['changed_reason'])}_" if d["changed_reason"] else "")
@@ -231,7 +231,8 @@ def to_html(run: dict) -> str:
                 badges += "<span class='badge flip'>changed</span>"
             if d["error"]:
                 badges += "<span class='badge flip'>error</span>"
-            body = [f"<strong>{_h(d['alias'])}</strong> <code>{_h(d['model_id'])}</code> — "
+            body = [f"<strong>{_h(d['alias'])}</strong> <code>{_h(d['model_id'])}</code>"
+                    + (f" <span class='badge'>{_h(d['role'])}</span>" if d.get("role") else "") + " — "
                     f"{_h(pos['verdict'])} ({_pct(pos['confidence'])}){badges}"]
             if d["changed_reason"]:
                 body.append(f"<div class=mut>{_h(d['changed_reason'])}</div>")

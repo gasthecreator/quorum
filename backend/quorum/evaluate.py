@@ -33,6 +33,7 @@ CONDITION_NAMES = {
     4: "Weighted vote + judge",
     5: "Debate + weighted vote + judge",
     6: "Condition 5 + tool grounding",
+    7: "Debate with profile-assigned roles (ablation of 5)",
 }
 
 Progress = Callable[[int, int, str], None]
@@ -104,7 +105,7 @@ async def run_eval(debate: Debate, req: EvalRequest, progress: Progress | None =
         notes.append("All models have the same pooled weight, so 'best single model' is arbitrary.")
 
     grounder = debate.grounder if mode == "review" else None
-    outcomes: dict[int, list[str]] = {i: [] for i in range(1, 7)}
+    outcomes: dict[int, list[str]] = {i: [] for i in range(1, 8)}
     tool_errors: list[str] = []
     tool_results: list = []
     if grounder is not None:  # one Semgrep run for the whole split; it is slow to start
@@ -158,6 +159,11 @@ async def run_eval(debate: Debate, req: EvalRequest, progress: Progress | None =
         # 5: full debate, reusing the same blind answers
         result = await debate.run(base, f"eval-{n}", noop_emit, blind=blind, weights=book)
         outcomes[5].append(_outcome(item, result.final.confirmed_findings if result.final else [], tol))
+        # 7 (optional ablation): the full debate again, but each model gets the role it measured best at
+        if req.roles and mode == "review":
+            roled = await debate.run(base.model_copy(update={"roles": "profile"}),
+                                     f"eval-roles-{n}", noop_emit, weights=book)
+            outcomes[7].append(_outcome(item, roled.final.confirmed_findings if roled.final else [], tol))
         # 6: the same debate, plus static analysis (a tool-confirmed finding outranks the vote)
         if grounder is not None and result.ctx is not None:
             tools, terr = tool_results[n - 1]
@@ -195,6 +201,15 @@ async def run_eval(debate: Debate, req: EvalRequest, progress: Progress | None =
             id=6, name=CONDITION_NAMES[6], available=False,
             reason_unavailable="Tool grounding applies to review packs and needs Semgrep installed."
             if mode == "review" else "Tool grounding applies to review packs only."))
+    if req.roles:
+        if mode == "review":
+            conditions.append(summarize(7, outcomes[7]))
+            notes.append("Condition 7 re-runs the debate with each model given the role it measured "
+                         "best at; it is an ablation of condition 5, so compare those two rows.")
+        else:
+            conditions.append(ConditionResult(
+                id=7, name=CONDITION_NAMES[7], available=False,
+                reason_unavailable="Roles apply to review packs only."))
     result = EvalResult(
         id=uuid.uuid4().hex[:10], created_at=now(), pack=req.pack, model_ids=req.model_ids,
         judge_model_id=judge, max_rounds=req.max_rounds, n_items=len(outcomes[1]),

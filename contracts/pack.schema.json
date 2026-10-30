@@ -122,6 +122,19 @@
         "title": "Category Descriptions",
         "type": "object"
       },
+      "category_roles": {
+        "additionalProperties": {
+          "enum": [
+            "attacker",
+            "maintainer",
+            "operator"
+          ],
+          "type": "string"
+        },
+        "description": "Optional: pin a category to a role. Otherwise the backend guesses from the name",
+        "title": "Category Roles",
+        "type": "object"
+      },
       "corpus": {
         "additionalProperties": {
           "type": "string"

@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CONTRACT_VERSION = "1.2.0"
+CONTRACT_VERSION = "1.3.0"
 
 Verdict = Literal["issue", "no_issue", "true", "false", "unsure"]
 Severity = Literal["low", "medium", "high", "critical"]
@@ -63,12 +63,23 @@ class ProfileCell(Strict):
     weight: float = Field(ge=0, le=1, description="max(lower, 0.05)")
 
 
+class RoleAssignment(Strict):
+    role: Literal["attacker", "maintainer", "operator", "outsider"]
+    source: Literal["measured", "default", "chosen"] = Field(
+        description="measured: picked from the model's profile; default: no calibration yet; "
+        "chosen: the outsider")
+    detail: str = ""
+
+
 class Pack(Strict):
     id: str
     name: str
     description: str = ""
     categories: list[str]
     category_descriptions: dict[str, str] = Field(default_factory=dict)
+    category_roles: dict[str, Literal["attacker", "maintainer", "operator"]] = Field(
+        default_factory=dict,
+        description="Optional: pin a category to a role. Otherwise the backend guesses from the name")
     modes: list[Mode]
     corpus: dict[Literal["calibration", "heldout"], str] = Field(
         description="Paths relative to the pack directory"
@@ -272,6 +283,8 @@ class RunStarted(Strict):
     escalate: Escalate
     frame: bool
     ground: bool = False
+    roles: dict[str, RoleAssignment] = Field(
+        default_factory=dict, description="model_id -> role, empty unless roles=profile or outsider")
     input_flags: list[str] = Field(
         default_factory=list, description="Suspected prompt-injection patterns found in the input"
     )
@@ -327,6 +340,7 @@ class ModelMessage(Strict):
     changed_reason: str
     text: str
     critique: Critique | None = None
+    role: Literal["attacker", "maintainer", "operator", "outsider"] | None = None
     error: str | None = Field(default=None, description="Set when the model failed to answer")
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -495,6 +509,13 @@ class RunRequest(Strict):
         default=None, description="Optional category hint used to pick weights"
     )
     seed: int | None = None
+    roles: Literal["off", "profile"] = Field(
+        default="off",
+        description="profile: give each model the role it measured best at (review packs only)")
+    outsider: bool = Field(
+        default=False,
+        description="With 3+ models, the weakest specialist reviews the bare input in round 0 only: "
+        "no framing, no peers, never revises")
     ground: bool = Field(
         default=False,
         description="Run a static analyser (Semgrep) over the input. A tool-confirmed finding is "
@@ -541,6 +562,9 @@ class EvalRequest(Strict):
     judge_model_id: str | None = None
     max_rounds: int = Field(default=2, ge=0, le=3)
     limit: int | None = Field(default=None, ge=1)
+    roles: bool = Field(
+        default=False,
+        description="Also run condition 7: the full debate with profile-assigned roles")
 
 
 class JobCreated(Strict):
