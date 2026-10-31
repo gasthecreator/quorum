@@ -1,6 +1,6 @@
-# Quorum: Build Plan (Gideon + Elikem)
+# Quorum: Build Plan
 
-Oct 30, 2026 · @Gideon
+Oct 30, 2026 · Gideon Sanni
 
 ## Goal and scope
 
@@ -73,17 +73,17 @@ Debaters see only anonymous aliases (A, B, C) and never see the weights. The UI 
 
 ## Ownership and collision rules
 
-Each person owns separate folders, and the contract is the only shared surface.
+The backend and frontend are separate workstreams with separate folders, and the contract is the only shared surface.
 
 | Path | Owner | Rule |
 | --- | --- | --- |
-| backend/ | Gideon | Elikem never edits |
-| frontend/ | Elikem | Gideon never edits |
-| contracts/ | Gideon writes, Elikem reviews | Frozen after C0; changes by pull request labeled contract, approved by the other person, version bumped |
-| contracts/fixtures/ | Gideon | Recorded event streams, at least one per stop reason |
-| packs/ | Elikem | Plain files the backend reads at runtime by path; format fixed by the contract |
-| docs/ and README.md | Elikem | Gideon sends facts through an issue comment |
-| config/models.yaml | Gideon | Elikem uses the Model Manager UI instead |
+| backend/ | Backend | Frontend work never edits it |
+| frontend/ | Frontend | Backend work never edits it |
+| contracts/ | Backend writes, frontend reviews | Frozen after C0; changes by pull request labeled contract, approved after review from the other side, version bumped |
+| contracts/fixtures/ | Backend | Recorded event streams, at least one per stop reason |
+| packs/ | Frontend | Plain files the backend reads at runtime by path; format fixed by the contract |
+| docs/ and README.md | Frontend | Backend facts go in through an issue comment |
+| config/models.yaml | Backend | The frontend uses the Model Manager UI instead |
 
 **Working rules**
 
@@ -94,13 +94,13 @@ Each person owns separate folders, and the contract is the only shared surface.
 - Never commit model weights, `.env` files or secrets.
 - If you are blocked by the other side, open an issue titled `contract: ...` instead of editing their folder.
 
-## Gideon: backend and engine
+## Backend and engine
 
 Everything runs without the UI: `quorum review file.diff`, `quorum calibrate`, `quorum eval`, `quorum serve`.
 
 | Task | Output | Done when |
 | --- | --- | --- |
-| B1 Contracts and fixtures | `contracts/` schemas and 3 event streams (recorded or hand-made) | Elikem can build the whole UI against the mock |
+| B1 Contracts and fixtures | `contracts/` schemas and 3 event streams (recorded or hand-made) | The whole UI can be built against the mock |
 | B2 Model registry | Ollama auto-discovery, OpenAI-compatible adapter, metadata (family, license, open\_weight) | GET /models lists installed models; POST /models adds one |
 | B3 Runner | Async parallel calls, structured JSON output, timeouts, retries | Three models answer one prompt in parallel with valid JSON |
 | B4 Debate engine | Round 0 blind; rounds 1 and 2 with anonymized peer messages; hold or revise with evidence; flip log; stop on consensus, stalemate, cap or budget; summaries of earlier rounds | A full run streams the SSE events in the contract |
@@ -113,7 +113,7 @@ Everything runs without the UI: `quorum review file.diff`, `quorum calibrate`, `
 
 **Order:** B1, then B2 and B3, then B4 to B6, then B7, B9 and B8, then B10.
 
-## Elikem: frontend, packs and docs
+## Frontend, packs and docs
 
 Build against the mock server first, then switch to live.
 
@@ -130,7 +130,7 @@ Build against the mock server first, then switch to live.
 | P2 Claim-check pack | About 40 claims with verified true or false labels and a source link each | Every label has a source someone can open |
 | P3 README and demo | Install steps, model attribution and license table, honest limitations, `DEMO.md` script, demo recording | A stranger can reproduce the demo |
 
-**Order:** F0, F1 and P1 first (Gideon's calibration needs the corpus), then F2 and F3, then F5, F4, F6, P2, P3.
+**Order:** F0, F1 and P1 first (calibration needs the corpus), then F2 and F3, then F5, F4, F6, P2, P3.
 
 ## Implementation status — 2026-10-30
 
@@ -176,14 +176,14 @@ Each checkpoint needs both sides done. C2 is the demo-ready line. If organizers 
 
 | Gate | Both sides deliver | Pass test |
 | --- | --- | --- |
-| C0 Contract freeze | Gideon: schemas and fixtures. Elikem: review and issues | Elikem's mock renders a full fixture run |
+| C0 Contract freeze | Backend: schemas and fixtures. Frontend: review and issues | The mock renders a full fixture run |
 | C1 First live run | One model, hardcoded weights, blind round only | UI in live mode shows a real model's findings |
 | C2 Live debate | Three models, two rounds, tally, judge | A seeded-bug diff produces a clustered, ruled result in the UI |
-| C3 Real weights | Elikem's corpus feeds Gideon's calibration | Profiles page shows measured weights with n |
+| C3 Real weights | The packs' corpus feeds calibration | Profiles page shows measured weights with n |
 | C4 Model Manager | Add a model from the UI | The new model appears with a calibrated profile |
 | C5 Evaluation and docs | Eval table, README, demo script | Held-out numbers published, even if the panel does not win |
 
-**Dependency to watch:** B7 needs P1. If P1 slips, Gideon uses a hand-made corpus of 6 items to keep moving and swaps in the real one at C3.
+**Dependency to watch:** B7 needs P1. If P1 slips, the backend uses a hand-made corpus of 6 items to keep moving and swaps in the real one at C3.
 
 ## Evaluation and honest claims
 

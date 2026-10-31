@@ -1,4 +1,4 @@
-# Model lineup for Quorum. Owned by Gideon; Elikem uses the Model Manager UI instead.
+# Model lineup for Quorum. The Model Manager UI can also add models.
 #
 # Ollama models that are pulled locally are discovered automatically, so this file is only for
 # things discovery cannot know: a pinned judge, and OpenAI-compatible endpoints.

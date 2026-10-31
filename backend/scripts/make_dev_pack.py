@@ -1,4 +1,4 @@
-"""Generate the small hand-made dev packs used until Elikem's real corpora land (plan: 6-item
+"""Generate the small hand-made dev packs used until the real corpora land (plan: 6-item
 fallback). Bug lines are located by substring, so they stay correct if the snippets change."""
 
 import json
