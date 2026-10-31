@@ -115,6 +115,9 @@ class ChatManager:
         turn, message_id = st.turns, uuid.uuid4().hex[:8]
         log = self.log(chat_id)
         history = self._history(log)
+        if st.title == "New chat":  # an untitled chat is named after its first message
+            st.title = text.strip().split("\n")[0][:80]
+            self.store.set_chat_title(chat_id, st.title)
         log.append("user_message", UserMessage(turn=turn, message_id=message_id, text=text))
         return turn, message_id, self._run_turn(st, log, turn, text, history)
 

@@ -185,6 +185,13 @@ class Store:
         r = self._one("SELECT * FROM chats WHERE id=?", (chat_id,))
         return {"id": r["id"], "created_at": r["created_at"], **json.loads(r["config"])} if r else None
 
+    def set_chat_title(self, chat_id: str, title: str) -> None:
+        r = self._one("SELECT config FROM chats WHERE id=?", (chat_id,))
+        if r:
+            cfg = json.loads(r["config"])
+            cfg["title"] = title
+            self._exec("UPDATE chats SET config=? WHERE id=?", (json.dumps(cfg), chat_id))
+
     def list_chats(self) -> list[dict]:
         return [{"id": r["id"], "created_at": r["created_at"], **json.loads(r["config"])}
                 for r in self._all("SELECT * FROM chats ORDER BY created_at DESC")]

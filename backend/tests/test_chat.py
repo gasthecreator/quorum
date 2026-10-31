@@ -224,3 +224,17 @@ async def test_http_sse_replays_and_resumes_and_stays_open_for_new_messages(clie
     tail = (await client.get(f"/chats/{chat_id}/events", headers={"Last-Event-ID": "3"})).text
     assert next(x for x in tail.splitlines() if x.startswith("id: ")) == "id: 4"
     assert json.loads(next(x[6:] for x in text.splitlines() if x.startswith("data: ")))["chat_id"] == chat_id
+
+
+async def test_an_untitled_chat_is_named_after_its_first_message_and_the_list_shows_the_answer(client):
+    m = await model_ids(client)
+    r = await client.post("/chats", json={"model_ids": [m["sharp"], m["stubborn"]], "rounds": 0})
+    chat_id = r.json()["chat_id"]
+    assert (await client.get(f"/chats/{chat_id}")).json()["title"] == "New chat"
+    await client.post(f"/chats/{chat_id}/messages", json={"text": "How do I name things well?\nLong detail"})
+    for t in list(client.state.tasks):
+        await t
+    listed = next(c for c in (await client.get("/chats")).json() if c["chat_id"] == chat_id)
+    assert listed["title"] == "How do I name things well?"
+    assert (await client.get(f"/chats/{chat_id}")).json()["title"] == "How do I name things well?"
+    assert not listed["last_message"].startswith("Consensus:")  # the judge's answer, not its raw three lines

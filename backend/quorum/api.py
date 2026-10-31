@@ -331,9 +331,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         out = []
         for rec in state.store.list_chats():
             events = state.chats.log(rec["id"]).events
-            last = next((e["data"]["text"] for e in reversed(events)
+            last = next((e["data"].get("answer") or e["data"]["text"] for e in reversed(events)
                          if e["event"] in ("judge_message", "chat_message", "user_message")
-                         and e["data"].get("text")), "")
+                         and (e["data"].get("answer") or e["data"].get("text"))), "")
             out.append(ChatListItem(
                 chat_id=rec["id"], title=rec["title"], model_ids=rec["model_ids"],
                 created_at=rec["created_at"], last_message=last[:200],
