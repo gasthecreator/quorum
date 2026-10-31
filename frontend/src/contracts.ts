@@ -100,3 +100,37 @@ export type Health = {
 };
 
 export type ApiError = { code: string; message: string };
+
+// ---------------------------------------------------------------------------- group chat (contract v1.4)
+
+export type ChatCreate = {
+  model_ids: string[];
+  judge_model_id?: string | null;
+  rounds?: number;
+  title?: string | null;
+  message?: string | null;
+};
+
+export type ChatCreated = { chat_id: string; turn?: number | null; message_id?: string | null };
+export type ChatMessageAccepted = { chat_id: string; turn: number; message_id: string };
+
+export type ChatListItem = {
+  chat_id: string;
+  title: string;
+  model_ids: string[];
+  created_at: string;
+  turns: number;
+  last_message: string;
+};
+
+export type ChatSummary = {
+  chat_id: string;
+  title: string;
+  model_ids: string[];
+  aliases: Record<string, string>;
+  judge_model_id: string;
+  rounds: number;
+  created_at: string;
+  status: "idle" | "replying";
+  events: { seq: number; event: string; data: Record<string, unknown> }[];
+};
