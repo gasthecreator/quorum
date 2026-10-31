@@ -43,6 +43,20 @@ function fixtureReplay(): Plugin {
           return;
         }
 
+        const chatDirectory = path.join(fixtureDirectory, "chat");
+        if (url.pathname === "/__mock/chat/fixtures" && request.method === "GET") {
+          response.setHeader("Content-Type", "application/json");
+          response.end(await readFile(path.join(chatDirectory, "index.json"), "utf8"));
+          return;
+        }
+        if (url.pathname === "/__mock/chat/fixture" && request.method === "GET") {
+          const file = path.basename(url.searchParams.get("file") ?? "");
+          const lines = (await readFile(path.join(chatDirectory, file), "utf8")).split(/\r?\n/).filter(Boolean);
+          response.setHeader("Content-Type", "application/json");
+          response.end(JSON.stringify(lines.map((line) => JSON.parse(line))));
+          return;
+        }
+
         if (url.pathname === "/__mock/runs" && request.method === "POST") {
           let body = "";
           for await (const chunk of request) body += chunk;

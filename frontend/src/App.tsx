@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Activity, ArrowDown, ArrowRight, BadgeCheck, Check, ChevronDown, CircleHelp,
   CircleStop, Clock3, Download, FileCode2, FileUp, Gauge, GitBranch, Layers3, LoaderCircle,
-  MessageSquareText, Play, Radio, RefreshCw, ShieldAlert, ShieldCheck, Sparkles, Target,
+  MessageSquareText, MessagesSquare, Play, Radio, RefreshCw, ShieldAlert, ShieldCheck, Sparkles, Target,
   TriangleAlert, UsersRound, X,
 } from "lucide-react";
 import { addModel, downloadRunExport, getHealth, getLatestEval, getModels, getPacks, getProfiles, loadFixtures, startEval, startFixtureRun, startLiveRun, subscribeToJob, subscribeToRun } from "./api";
 import type { EvalCondition, EvalInterval, EvalRequest, EvalResult, ModelCreate, ModelInfo, PackInfo, ProfileCell, ProfilesResponse, RunRequest } from "./contracts";
+import { Chat } from "./Chat";
 import type { Cluster, EventEnvelope, Fixture, FinalResult, Grounded, JudgeRuling, ModelMessage, RunStarted } from "./types";
 
 type RoundFinished = { round: number; agreement: number };
@@ -38,14 +39,14 @@ function App() {
   const [outsiderEnabled, setOutsiderEnabled] = useState(false);
   const [groundEnabled, setGroundEnabled] = useState(false);
   const [groundingAvailable, setGroundingAvailable] = useState(false);
-  const [contractVersion, setContractVersion] = useState("1.3.0");
+  const [contractVersion, setContractVersion] = useState("1.4.0");
   const [fileName, setFileName] = useState("");
   const [events, setEvents] = useState<EventEnvelope[]>([]);
   const [runState, setRunState] = useState<"idle" | "loading" | "running" | "done" | "error">("idle");
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [exportError, setExportError] = useState("");
-  const [page, setPage] = useState<"review" | "profiles" | "models" | "eval">("review");
+  const [page, setPage] = useState<"chat" | "review" | "profiles" | "models" | "eval">("chat");
   const closeStream = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -231,6 +232,7 @@ function App() {
 
         <div className="nav-label">WORKSPACE</div>
         <nav className="primary-nav" aria-label="Main navigation">
+          <button className={`nav-item ${page === "chat" ? "active" : ""}`} onClick={() => setPage("chat")}><MessagesSquare size={17} /><span>Group chat</span></button>
           <button className={`nav-item ${page === "review" ? "active" : ""}`} onClick={() => setPage("review")}><MessageSquareText size={17} /><span>Review room</span><span className="nav-shortcut">⌘ 1</span></button>
           <button className={`nav-item ${page === "profiles" ? "active" : ""}`} onClick={() => setPage("profiles")}><Gauge size={17} /><span>Skill profiles</span></button>
           <button className={`nav-item ${page === "eval" ? "active" : ""}`} onClick={() => setPage("eval")}><Activity size={17} /><span>Evaluations</span></button>
@@ -248,7 +250,7 @@ function App() {
 
       <main className="main-area">
         <header className="topbar">
-          <div className="breadcrumbs"><span>Workspace</span><ArrowRight size={13} /><strong>{page === "review" ? "Review room" : page === "profiles" ? "Skill profiles" : page === "eval" ? "Evaluations" : "Model manager"}</strong></div>
+          <div className="breadcrumbs"><span>Workspace</span><ArrowRight size={13} /><strong>{page === "chat" ? "Group chat" : page === "review" ? "Review room" : page === "profiles" ? "Skill profiles" : page === "eval" ? "Evaluations" : "Model manager"}</strong></div>
           <div className="topbar-actions">
             <span className={`connection-pill ${apiMode === "live" && !healthOk ? "connection-offline" : ""}`}><span className="status-dot" />{apiMode === "mock" ? "Fixture mode" : backendLoading ? "Connecting to API" : healthOk ? "Live API connected" : "Live API unavailable"}</span>
             <span className="version-label">Contract {contractVersion}</span>
@@ -418,6 +420,7 @@ function App() {
 
           <footer className="page-footer"><span><span className="status-dot" /> Local-first review</span><span><Clock3 size={13} />{final?.usage ? `${final.usage.calls} model calls · ${final.usage.elapsed_ms} ms recorded` : apiMode === "mock" ? "Recorded fixture · no model calls" : healthOk ? "Live model review" : "Waiting for backend"}</span><span>Quorum preview <span className="footer-dot">·</span> {apiMode === "mock" ? `${fixtures.length} scenarios` : `${packs.length} packs · ${models.length} models`}</span></footer>
           </> : null}
+          <div style={{ display: page === "chat" ? "contents" : "none" }}><Chat apiMode={apiMode} models={models} active={page === "chat"} onOpenModels={() => setPage("models")} /></div>
           <div style={{ display: page === "models" ? "contents" : "none" }}><ModelManagerPage models={models} packs={packs} apiMode={apiMode} onModelsChanged={() => setReloadKey((key) => key + 1)} onViewProfiles={() => setPage("profiles")} /></div>
           <div style={{ display: page === "profiles" ? "contents" : "none" }}><ProfilesPage packs={packs} models={models} defaultPack={selectedPack} apiMode={apiMode} active={page === "profiles"} /></div>
           <div style={{ display: page === "eval" ? "contents" : "none" }}><EvaluationPage packs={packs} models={availableModels} defaultPack={selectedPack} defaultModels={selectedModels} defaultJudge={judgeModelId} defaultRounds={maxRounds} apiMode={apiMode} active={page === "eval"} /></div>
